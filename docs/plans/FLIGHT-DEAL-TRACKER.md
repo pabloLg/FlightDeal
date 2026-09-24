@@ -64,11 +64,12 @@ Implementaciones:
 
 ## 4. Fases
 
-### F1 — Foundation
+### F1 — Foundation ✅
 - Scaffold Next.js+TS+Tailwind, Supabase (Auth, DB), config env, CI (lint+typecheck+test).
 - Migraciones base + seed + RLS.
 - Skill a medida `google-flights-scraper` activa para fases de scraping.
 - **Criterios de aceptación**: app arranca, auth funcional, migración aplicada, RLS verificado (audit), pipeline CI verde.
+- **Verificado (2026-09-24)**: E2E UI (login demo, signup+profile, signout, ruta protegida → `/login?next=`), audit RLS 9/9 verde (`docs/audits/rls-audit-f1.md`), CI GitHub run #3 success (lint, typecheck, test, build) en Node 22.
 
 ### F2a — Search + Domain
 - Modelo dominio (busquedas, ejecuciones), servicios, mock source.

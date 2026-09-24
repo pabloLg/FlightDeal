@@ -6,7 +6,7 @@ Next.js (App Router, **v16 — ver breaking changes en `node_modules/next/dist/d
 
 ## Fase actual
 
-Plan congelado en `docs/plans/FLIGHT-DEAL-TRACKER.md`. **F1 (Foundation) en curso**: scaffold, Supabase local, migración base + RLS, auth, CI. Docker/WSL2 instalado, pendiente de reiniciar Windows para arrancar el engine.
+Plan congelado en `docs/plans/FLIGHT-DEAL-TRACKER.md`. **F1 (Foundation) ✅ completado 2026-09-24**: Supabase local OK, migración+seed aplicados, RLS audit 9/9 verde, auth E2E UI OK, CI verde en GitHub. Siguiente fase: **F2a (Search + Domain)**. Docker engine OK (VHDX en `E:\DockerDesktop\wsl`).
 
 ## Skills del proyecto (`.agents/skills`)
 

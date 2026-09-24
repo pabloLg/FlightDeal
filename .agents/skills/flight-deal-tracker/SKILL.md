@@ -41,9 +41,18 @@ Fuente de verdad del plan ejecutable: `docs/plans/FLIGHT-DEAL-TRACKER.md` (con l
 
 Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noEmit`), `npm test`. Actualizar `AGENTS.md` cuando se definan.
 
+## Estado actual
+
+**F1 (Foundation) ✅ completado 2026-09-24**:
+- Supabase local OK (CLI, Docker), migración `20260924102308_init.sql` + seed aplicados, `supabase db reset` reproduce limpio.
+- RLS audit 9/9 verde (`docs/audits/rls-audit-f1.md`). Trigger `handle_new_user` es `security definer set search_path = public`.
+- Auth E2E UI OK (login demo, signup con profile auto, signout, `/dashboard` protegido → `/login?next=`).
+- CI GitHub verde (lint, typecheck, test, build, Node 22). `npm ci` estricto: lockfile regenerado bajo Node 22. Ojo: `LayoutProps`/`PageProps` de Next 16 requieren `.next/types` generados — no usar en código que `tsc --noEmit` revisa antes del build.
+- Usuario seed: `demo@example.com` / `DemoPass123!` (creado por `supabase db reset`).
+
 ## Fases pendientes por orden
 
-F1 Foundation → F2a Search+Domain → F2b Scraper (phase-gate) → F3 Results → F4 Historical → F5 Alerts → F6 Telegram → F7 Scheduler → F8 Fallback API → F9 Flexible search → F10 Optimization.
+F2a Search+Domain → F2b Scraper (phase-gate) → F3 Results → F4 Historical → F5 Alerts → F6 Telegram → F7 Scheduler → F8 Fallback API → F9 Flexible search → F10 Optimization.
 
 ## Normas de trabajo
 
