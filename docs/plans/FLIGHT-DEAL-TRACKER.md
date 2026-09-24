@@ -74,6 +74,7 @@ Implementaciones:
 ### F2a — Search + Domain
 - Modelo dominio (busquedas, ejecuciones), servicios, mock source.
 - **Criterios**: CRUD searches, ejecución mock end-to-end, poll de estado.
+- **Verificado (2026-09-24)**: dominio `MockFlightSource` (4 tests deterministas), CRUD searches por UI E2E (crear/editar/desactivar/eliminar), ejecución mock end-to-end persistida (`completed`, flight_options+flight_prices), poll client 600ms hasta terminal, `no_flights` → completed con mensaje, checks locales verdes (lint, typecheck, 6 tests, build), CI GitHub run OK.
 
 ### F2b — Google Flights Scraper
 - Playwright MCP + `google-flights-scraper` skill. Fixtures: 10 rutas locales (ofertas, sin resultados, moneda, multi-ciudad, etc.).

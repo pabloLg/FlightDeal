@@ -50,6 +50,13 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 - CI GitHub verde (lint, typecheck, test, build, Node 22). `npm ci` estricto: lockfile regenerado bajo Node 22. Ojo: `LayoutProps`/`PageProps` de Next 16 requieren `.next/types` generados — no usar en código que `tsc --noEmit` revisa antes del build.
 - Usuario seed: `demo@example.com` / `DemoPass123!` (creado por `supabase db reset`).
 
+**F2a (Search + Domain) ✅ completado 2026-09-24**:
+- Dominio en `src/domain/sources/` (una vez dentro de `app/`): `types.ts`, `FlightSource.ts`, `MockFlightSource.ts` (hash determinista, fixture `XXX` → `no_flights`) + tests vitest.
+- CRUD searches: Server Actions en `app/actions/search.ts` + UI en `components/search/searches-view.tsx` (cliente).
+- Runner: `app/api/searches/[id]/route.ts` (POST run async 202 + GET status, runtime nodejs). Ejecución mock end-to-end: `pending→running→completed`, upsert de `flight_options` (dedupe `search_id,dedupe_key`) + snapshot `flight_prices`. Poll en cliente: GET cada 600ms hasta `completed|degraded|failed`.
+- E2E UI validado: crear/editar/desactivar/eliminar search, ejecutar con poll, `no_flights` → `completed` con mensaje. Checks locales verdes (lint, typecheck, 6 tests, build), CI GitHub OK. Commit `db4248d`.
+- Advertencia: el `useEffect` de cierre en `EditSearchForm` compara `state !== emptyState` (referencia), no `state &&`, para no cerrar el form al montar.
+
 ## Fases pendientes por orden
 
 F2a Search+Domain → F2b Scraper (phase-gate) → F3 Results → F4 Historical → F5 Alerts → F6 Telegram → F7 Scheduler → F8 Fallback API → F9 Flexible search → F10 Optimization.
