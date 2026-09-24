@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "skills": {
+    "browser-automation": {
+      "source": "sickn33/agentic-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/browser-automation/SKILL.md",
+      "computedHash": "df2590b6464294d20878b6029f4bd2d6af761c17199478e82d1b111100873e57"
+    },
+    "data-scraper-agent": {
+      "source": "affaan-m/ecc",
+      "sourceType": "github",
+      "skillPath": "skills/data-scraper-agent/SKILL.md",
+      "computedHash": "c89f4d66835fb15fa13bf3fad075cd7497ebed1c43768e5c8cabcc655e852c89"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "106acf230014cbb43ca34e6410371321b56ca742f9ee0442e8ec05bf02eb0384"
+    },
+    "nextjs-app-router-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/frontend-mobile-development/skills/nextjs-app-router-patterns/SKILL.md",
+      "computedHash": "3a46e9093baecb3a85819529ce05006f817663f48d9e872868c32ae6049c0d5c"
+    },
+    "nextjs-supabase-auth": {
+      "source": "sickn33/agentic-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nextjs-supabase-auth/SKILL.md",
+      "computedHash": "f2f8b00877ed450e4b5d1e040b52c1c4d312ec2264c75d2248253814c2a9e9ba"
+    },
+    "playwright-explore-website": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/playwright-explore-website/SKILL.md",
+      "computedHash": "ac361696198c2db22a0f9d3aa456d2f83c9f0110bf00d6ca529f735395fe3a5c"
+    },
+    "supabase": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase/SKILL.md",
+      "computedHash": "a6260582f48df8ba53380bb9b9e870ed2ae5fe147799e90ed783b8aa25167d50"
+    },
+    "supabase-audit-rls": {
+      "source": "yoanbernabeu/supabase-pentest-skills",
+      "sourceType": "github",
+      "skillPath": "skills/audit-api/supabase-audit-rls/SKILL.md",
+      "computedHash": "2ac58ce5b714dc094940640e43fc3c42eec22a7234d2b46dd75885462a8c803c"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
+      "computedHash": "128fac78002d916c8ca908245d398e634f540d8bcf20915b2b2359aeb18eba59"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-best-practices/SKILL.md",
+      "computedHash": "6b526d013e28073246a36f99b529bc43745d30832ecfa8217b359c34f260ca6b"
+    },
+    "webapp-testing": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/webapp-testing/SKILL.md",
+      "computedHash": "3f14af7f5690695209c22fbf8c8d133769a86d64892602c09bb13f135e14e857"
+    }
+  }
+}
