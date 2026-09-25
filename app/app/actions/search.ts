@@ -26,6 +26,11 @@ async function requireUserId() {
 }
 
 function readForm(formData: FormData) {
+  const thresholdRaw = formData.get("alert_threshold_eur");
+  const alert_threshold_eur =
+    thresholdRaw === null || String(thresholdRaw).trim() === ""
+      ? null
+      : Number(thresholdRaw);
   return {
     origin: String(formData.get("origin") ?? "").trim().toUpperCase(),
     destination: String(formData.get("destination") ?? "").trim().toUpperCase(),
@@ -35,6 +40,7 @@ function readForm(formData: FormData) {
     cabin_class: (formData.get("cabin_class") as string) || "economy",
     stops: (formData.get("stops") as string) || "any",
     adults: Number(formData.get("adults")) || 1,
+    alert_threshold_eur,
   };
 }
 

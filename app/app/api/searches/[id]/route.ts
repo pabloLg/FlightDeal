@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { evaluateAlert } from "@/src/domain/alerts/evaluate-alert";
 import { MockFlightSource } from "@/src/domain/sources/mock-flight-source";
 import type { FlightSearchParams } from "@/src/domain/sources/types";
 
@@ -18,6 +19,7 @@ type SearchRow = {
   cabin_class: "economy" | "premium_economy" | "business" | "first";
   stops: "any" | "non_stop";
   adults: number;
+  alert_threshold_eur: number | null;
 };
 
 function toSearchParams(
@@ -170,6 +172,8 @@ async function runExecution(
       structure_check_passed: true,
       raw_result: { optionCount: result.options.length },
     });
+
+    await evaluateAndDispatchAlerts(supabase, search);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await mark({
@@ -177,5 +181,69 @@ async function runExecution(
       finished_at: new Date().toISOString(),
       error_message: message,
     });
+  }
+}
+
+async function evaluateAndDispatchAlerts(
+  supabase: Supabase,
+  search: SearchRow & { alert_threshold_eur: number | null },
+) {
+  try {
+    const { data: options } = await supabase
+      .from("flight_options")
+      .select("id, price_eur")
+      .eq("search_id", search.id);
+    if (!options || options.length === 0) return;
+
+    const best = options.reduce((min, o) =>
+      Number(o.price_eur) < Number(min.price_eur) ? o : min,
+    );
+
+    const threshold = search.alert_threshold_eur ?? null;
+    const { data: bestEdge } = await supabase
+      .from("alerts_edge")
+      .select("id, last_fired_at, cooldown_hours")
+      .eq("search_id", search.id)
+      .eq("provider", "telegram")
+      .eq("threshold_eur", threshold)
+      .maybeSingle();
+
+    const decision = evaluateAlert({
+      thresholdEur: threshold,
+      bestOption: { id: best.id, priceEur: Number(best.price_eur) },
+      lastFiredAt: bestEdge?.last_fired_at ?? null,
+      cooldownHours: bestEdge?.cooldown_hours ?? 24,
+      now: new Date().toISOString(),
+    });
+
+    if (!decision.shouldFire) return;
+
+    const { error: upsertError, data: edge } = await supabase
+      .from("alerts_edge")
+      .upsert(
+        {
+          search_id: search.id,
+          provider: "telegram",
+          threshold_eur: threshold,
+          cooldown_hours: 24,
+        },
+        { onConflict: "search_id,provider,threshold_eur", ignoreDuplicates: false },
+      )
+      .select()
+      .single();
+    if (upsertError || !edge) return;
+
+    await supabase.from("alert_dispatches").insert({
+      alert_id: edge.id,
+      flight_option_id: decision.optionId,
+      price_eur: decision.priceEur,
+      status: "dispatched",
+    });
+    await supabase
+      .from("alerts_edge")
+      .update({ last_fired_at: new Date().toISOString() })
+      .eq("id", edge.id);
+  } catch {
+    // alert engine never fails the execution
   }
 }

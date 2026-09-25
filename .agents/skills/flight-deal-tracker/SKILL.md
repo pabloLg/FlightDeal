@@ -43,6 +43,11 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Estado actual
 
+**F5 (Alerts) ✅ completado 2026-09-25**:
+- Engine puro `src/domain/alerts/evaluate-alert.ts` (7 tests): decide fire según `alert_threshold_eur` (single source, UI crear/editar búsqueda), mejor precio y cooldown (`alerts_edge` telegram 24h, `last_fired_at`).
+- Hook `evaluateAndDispatchAlerts()` en `POST /api/searches/[id]` tras ejecución completada → materializa `alerts_edge` + insert `alert_dispatches` (`dispatched`; envío real a Telegram en F6). Engine aislado, nunca hace fallar la ejecución.
+- E2E verificado: 60≤80 dispach+edge; 2ª ejecución en ventana sin duplicado; umbral 50 sin disparo. Auditoría: `docs/audits/f5-alerts-audit.md`. Checks verdes (lint, typecheck, 32 tests, build).
+
 **F4 (Historical) ✅ completado 2026-09-25**:
 - Migración `20260925120910_f4_historical.sql`: trigger `refresh_daily_stats` (AFTER INSERT en `flight_prices`) mantiene `price_stats_daily` (min/avg/max/obs por search+day, recomputado desde detalle, upsert `on conflict (search_id, stats_date)`); `run_retention(age default 3 meses)` purga `flight_prices` viejos conservando agregados salvo profile `retention_keep_aggregates=false` (purgar todo).
 - Seed: `on conflict do update` en profiles (el profile demo lo crea el trigger `handle_new_user` antes que el seed; `do nothing` no actualizaba el flag) + demo `retention_keep_aggregates=true`.

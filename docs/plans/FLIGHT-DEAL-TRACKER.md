@@ -94,6 +94,7 @@ Implementaciones:
 ### F5 — Alerts
 - Thresholds por búsqueda, engine de evaluación de buenos precios.
 - **Criterios**: alerta se dispara y se registra dispatch, no duplica en ventana.
+- **Verificado (2026-09-25)**: `src/domain/alerts/evaluate-alert.ts` (engine puro, 7 tests) + campo "Umbral de alerta (EUR)" en crear/editar búsqueda (`searches.alert_threshold_eur`). Tras cada ejecución completada se evalúa mejor precio vs umbral: si ≤ umbral y fuera de cooldown, materializa `alerts_edge` (telegram, 24h) y registra `alert_dispatches` (`dispatched`; envío real en F6). E2E: 60≤80 → dispatch + edge; 2ª ejecución en ventana → sin duplicado; umbral 50 → 60>50 sin disparo. Auditoría: `docs/audits/f5-alerts-audit.md`.
 
 ### F6 — Telegram
 - Bot único, comandos, suscripción, callback/estado.

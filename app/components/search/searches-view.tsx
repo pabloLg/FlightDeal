@@ -35,6 +35,7 @@ type SearchRow = {
   stops: "any" | "non_stop";
   adults: number;
   enabled: boolean;
+  alert_threshold_eur: number | null;
 };
 
 type ExecutionRow = {
@@ -285,6 +286,17 @@ function CreateSearchCard() {
             <Label htmlFor="adults">Pasajeros</Label>
             <Input id="adults" name="adults" type="number" min={1} max={9} defaultValue={1} />
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="alert_threshold_eur">Umbral de alerta (EUR)</Label>
+            <Input
+              id="alert_threshold_eur"
+              name="alert_threshold_eur"
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="Opcional"
+            />
+          </div>
           <div className="flex flex-col justify-end">
             <Button type="submit" disabled={pending}>
               {pending ? "Creando…" : "Crear búsqueda"}
@@ -357,6 +369,18 @@ function EditSearchForm({
       <Input name="cabin_class" type="hidden" value={search.cabin_class} />
       <Input name="stops" type="hidden" value={search.stops} />
       <Input name="adults" type="hidden" value={search.adults} />
+      <Label htmlFor={`alert-${search.id}`} className="sr-only">
+        Umbral de alerta (EUR)
+      </Label>
+      <Input
+        id={`alert-${search.id}`}
+        name="alert_threshold_eur"
+        type="number"
+        min={0}
+        step="0.01"
+        placeholder="Umbral (EUR)"
+        defaultValue={search.alert_threshold_eur ?? ""}
+      />
       <Button type="submit" size="sm" disabled={pending}>
         Guardar
       </Button>
