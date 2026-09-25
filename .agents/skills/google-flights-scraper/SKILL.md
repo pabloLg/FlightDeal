@@ -23,8 +23,8 @@ Componente fuente PRINCIPAL del proyecto Flight Deal Tracker. Interfaz `FlightSo
 3. `sessionFactory` — contexto anónimo con cookies de consentimiento, timeouts, retries con backoff.
 4. `parsePage(html)` — extrae datos (separado de navegación). Devuelve `raw[]`.
 5. `normalize(raw)` — normaliza a esquema interno (separado).
-6. `structureGuard(page)` — valida selectores clave / shape. Si cambia: `source_structure_version` nuevo + fail-closed.
-7. `fixtures/` — muestras reales `.html` (10 rutas: ofertas, sin resultados, moneda, multi-ciudad, blocked, partial, etc.) para tests deterministas.
+6. `structureGuard(html)` — estructural: markers `Google Vuelos` (título) + `AF_initDataCallback({key: 'ds:0'` + `ds:1` + payload ds:1 JSON válido. **Atención (2026-09-25)**: una página válida con 0 opciones es resultado legítimo `no_flights` (NO degradar); degradar solo si estructura rota (`missing_marker:*`) o ds:1 ausente/corrupto (`parse_failed:ds1_missing_or_corrupt`). `source_structure_version` nuevo + fail-closed al cambiar.
+7. `fixtures/` — muestras reales `.html` (ruta con ofertas: `mad-bcn-roundtrip` 17 opciones; sin resultados real: `aa-bcn-no-results`, ruta AAA→BCN donde Google devuelve 0). Captura real vía Playwright MCP → base64 → reconstruir con write tool (MCP no puede escribir archivos en Windows).
 
 ## Flujo de ejecución (resumen)
 

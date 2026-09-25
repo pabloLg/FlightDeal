@@ -79,6 +79,7 @@ Implementaciones:
 ### F2b — Google Flights Scraper
 - Playwright MCP + `google-flights-scraper` skill. Fixtures: 10 rutas locales (ofertas, sin resultados, moneda, multi-ciudad, etc.).
 - **Criterios**: buscador real `1 origen→NO-Destino`, fixtures pasan, structure-guard detecta rotura simulada, fail-closed verificado.
+- **Verificado (2026-09-25)**: `buildTfsUrl` + `parsePage` (17/17 opciones en MAD→BCN, multi-leg OK), `structureGuard` estructural (markers título + ds:0 + ds:1 + payload JSON válido) — **semántica**: página válida con 0 opciones = resultado legítimo `no_flights` (NO es rotura); guard degrada solo con estructura rota o payload ds:1 corrupto/ausente (`missing_marker:*`, `parse_failed:ds1_missing_or_corrupt`). `GoogleFlightsScraperSource` con `HtmlFetcher` inyectable (tests offline, sin dep Playwright en runtime): fetch error → `fetch_failed` degradado, guard fail → `structure_mismatch` degradado, 0 opciones → `no_flights` no degradado. Fixtures reales: `mad-bcn-roundtrip.html` (17 opciones) y `aa-bcn-no-results.html` (AAA→BCN, sin resultados real) — capturados del DOM vivo vía MCP. 14 tests scraper deterministas + 25 suite total, lint/typecheck/build verdes.
 
 ### F3 — Results
 - Guardado de resultados, listado/UI, detalle.
