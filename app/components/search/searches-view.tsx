@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useActionState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import {
@@ -179,6 +180,15 @@ export function SearchesView({
             )}
             <CardAction>
               <div className="flex items-center gap-2">
+                {search.lastExecution && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    render={<Link href={`/searches/${search.id}`} />}
+                  >
+                    Ver resultados
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"

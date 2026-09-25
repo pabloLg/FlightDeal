@@ -84,6 +84,7 @@ Implementaciones:
 ### F3 — Results
 - Guardado de resultados, listado/UI, detalle.
 - **Criterios**: resultados persistentes y visibles, dedupe por (search, salida, regreso, tarifa).
+- **Verificado (2026-09-25)**: persistencia ya heredada de F2a (`search_executions` + `flight_options` upsert dedupe por `search_id+dedupe_key` + `flight_prices` snapshot). Añadida página `/searches/[id]` (server component, RLS multi-tenant): lista opciones de la última ejecución terminada con precio actual, aerolíneas, duración y legs ida+regreso; botón "Ver resultados" por búsqueda en dashboard (solo si hay ejecución). E2E: crear búsqueda (MAD→BCN) → ejecutar con MockFlightSource → página muestra 3 opciones; 2ª ejecución mantiene 3 (dedupe); checks locales verdes (lint, typecheck, 25 tests, build).
 
 ### F4 — Historical
 - Acumulación histórica, agregados diarios, tendencias.
