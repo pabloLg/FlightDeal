@@ -40,6 +40,17 @@ type PriceStatRow = {
   observations: number;
 };
 
+type DispatchRow = {
+  id: string;
+  price_eur: number;
+  status: "dispatched" | "delivered" | "failed";
+  dispatched_at: string;
+  alerts_edge:
+    | { threshold_eur: number; provider: string }
+    | { threshold_eur: number; provider: string }[]
+    | null;
+};
+
 function PriceHistory({ stats }: { stats: PriceStatRow[] }) {
   const max = Math.max(...stats.map((s) => s.max_price_eur));
 
@@ -106,6 +117,49 @@ function LegList({ legs }: { legs: Leg[] }) {
   );
 }
 
+function edgeOf(
+  d: DispatchRow,
+): { threshold_eur: number; provider: string } | undefined {
+  if (!d.alerts_edge) return undefined;
+  return Array.isArray(d.alerts_edge) ? d.alerts_edge[0] : d.alerts_edge;
+}
+
+function AlertHistory({ dispatches }: { dispatches: DispatchRow[] }) {
+  const statusLabel: Record<DispatchRow["status"], string> = {
+    dispatched: "Enviada",
+    delivered: "Entregada",
+    failed: "Fallida",
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {dispatches.map((d) => {
+        const edge = edgeOf(d);
+        return (
+          <div
+            key={d.id}
+            className="flex items-center justify-between gap-3 text-sm"
+          >
+            <span className="text-muted-foreground">
+              {new Date(d.dispatched_at).toLocaleString("es-ES")}
+            </span>
+            <span className="font-medium tabular-nums">
+              {d.price_eur.toFixed(2)} EUR
+              {edge ? (
+                <span className="text-muted-foreground">
+                  {" "}
+                  · umbral {edge.threshold_eur.toFixed(2)}
+                </span>
+              ) : null}
+            </span>
+            <span className="w-24 text-right">{statusLabel[d.status]}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default async function SearchResultsPage({
   params,
 }: {
@@ -150,6 +204,15 @@ export default async function SearchResultsPage({
     .order("stats_date", { ascending: true });
 
   const statsRows = (stats ?? []) as PriceStatRow[];
+
+const { data: dispatches } = await supabase
+  .from("alert_dispatches")
+  .select(
+    "id, price_eur, status, dispatched_at, alerts_edge(threshold_eur, provider)",
+  )
+  .order("dispatched_at", { ascending: false });
+
+const dispatchRows = (dispatches ?? []) as DispatchRow[];
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
@@ -228,6 +291,22 @@ export default async function SearchResultsPage({
             </p>
           ) : (
             <PriceHistory stats={statsRows} />
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Alertas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {dispatchRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aún no se ha disparado ninguna alerta para esta búsqueda. Se
+              disparan cuando el mejor precio baja del umbral configurado.
+            </p>
+          ) : (
+            <AlertHistory dispatches={dispatchRows} />
           )}
         </CardContent>
       </Card>

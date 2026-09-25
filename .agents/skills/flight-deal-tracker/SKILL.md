@@ -43,6 +43,13 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Estado actual
 
+**F7 (Scheduler) ✅ completado 2026-09-25**:
+- Migración `20260925150000_f7_scheduler.sql`: `scheduler_tick()` (advisory lock global `flight_deal_tracker_tick`, selección de searches habilitados sin ejecución activa ni terminal en ventana `p_min_interval`, inserta `search_executions` con lease `tick:<txid>` y devuelve las ejecuciones) + `release_expired_leases()` (leases zombie → `failed` tras gracia).
+- Endpoint `POST /api/scheduler/tick` (auth Bearer `CRON_SECRET`, cliente service_role `lib/supabase/admin.ts`, fire-and-forget) + `vercel.json` cron `0 6 * * *` (Vercel Hobby: 1/día).
+- Refactor: ejecución compartida en `src/domain/search/execute-search.ts` (endpoint manual y cron la reutilizan; `mark()` limpia leases). `.env`: `SUPABASE_SERVICE_ROLE_KEY` (164 chars local), `CRON_SECRET`.
+- F6-prep: sección **Alertas** en `/searches/[id]` (historial de `alert_dispatches`: fecha, precio, umbral, estado). La UI consulta alerts_edge embebido (tolerante objeto/array).
+- E2E: tick → ejecución `completed` con 3 precios → alerta 60≤80 registrada, visible en UI. Auditoría: `docs/audits/f7-scheduler-audit.md`. Suite 32/32, lint/typecheck/build verdes.
+
 **F5 (Alerts) ✅ completado 2026-09-25**:
 - Engine puro `src/domain/alerts/evaluate-alert.ts` (7 tests): decide fire según `alert_threshold_eur` (single source, UI crear/editar búsqueda), mejor precio y cooldown (`alerts_edge` telegram 24h, `last_fired_at`).
 - Hook `evaluateAndDispatchAlerts()` en `POST /api/searches/[id]` tras ejecución completada → materializa `alerts_edge` + insert `alert_dispatches` (`dispatched`; envío real a Telegram en F6). Engine aislado, nunca hace fallar la ejecución.
@@ -74,7 +81,7 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Fases pendientes por orden
 
-F2a Search+Domain → F2b Scraper (phase-gate) → F3 Results → F4 Historical → F5 Alerts → F6 Telegram → F7 Scheduler → F8 Fallback API → F9 Flexible search → F10 Optimization.
+Ejecución: F1–F5 ✅, **F7 Scheduler ✅** → **F9 Flexible search** → **F8 Fallback API** → **F10 Optimization** → **F6 Telegram (pospuesta al final, decisión usuario 2026-09-25)**. F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
 
 ## Normas de trabajo
 

@@ -96,13 +96,15 @@ Implementaciones:
 - **Criterios**: alerta se dispara y se registra dispatch, no duplica en ventana.
 - **Verificado (2026-09-25)**: `src/domain/alerts/evaluate-alert.ts` (engine puro, 7 tests) + campo "Umbral de alerta (EUR)" en crear/editar búsqueda (`searches.alert_threshold_eur`). Tras cada ejecución completada se evalúa mejor precio vs umbral: si ≤ umbral y fuera de cooldown, materializa `alerts_edge` (telegram, 24h) y registra `alert_dispatches` (`dispatched`; envío real en F6). E2E: 60≤80 → dispatch + edge; 2ª ejecución en ventana → sin duplicado; umbral 50 → 60>50 sin disparo. Auditoría: `docs/audits/f5-alerts-audit.md`.
 
-### F6 — Telegram
+### F6 — Telegram (pospuesta al final)
 - Bot único, comandos, suscripción, callback/estado.
 - **Criterios**: suscripción ok, mensaje de alerta recibido, rate limit respetado.
+- **Nota**: reordenada al FINAL del roadmap por decisión del usuario (2026-09-25). No se pierde diseño: F5 registra `alert_dispatches` (`dispatched`) y `alerts_edge` (provider `telegram`) como contrato de entrada; F7 ya expone el histórico de dispatchs en `/searches/[id]`. F6 solo añadirá el bot (webhook/getUpdates, comandos, chat_id por profile, `delivered`/`failed`).
 
 ### F7 — Scheduler
 - Tick interno en Postgres (leases), Vercel Cron dispara.
 - **Criterios**: sin doble ejecución, ejecuciones registradas, release de leases.
+- **Verificado (2026-09-25)**: migración `20260925150000_f7_scheduler.sql` — `scheduler_tick()` (advisory lock global, selección de searches habilitados sin ejecución activa ni reciente, inserta `search_executions` con lease `tick:<txid>`, devuelve ejecuciones) + `release_expired_leases()` (leases zombie → `failed` tras gracia). Endpoint `POST /api/scheduler/tick` (auth Bearer `CRON_SECRET`, cliente service_role, fire-and-forget) + `vercel.json` cron `0 6 * * *`. Refactor: ejecución compartida en `src/domain/search/execute-search.ts` (usa el endpoint manual y el cron; limpia leases al marcar estado). E2E: tick → ejecución `completed` con 3 precios → alerta disparada (60≤80), UI sección **Alertas** en `/searches/[id]` (F6-prep, historial de dispatches). Auditoría: `docs/audits/f7-scheduler-audit.md`. Suite 32/32, lint/typecheck/build verdes.
 
 ### F8 — Fallback API
 - SerpAPI primario (free 250/mes, 50/h), Kiwi/Tequila secundario.
