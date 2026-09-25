@@ -31,13 +31,17 @@ values (
 )
 on conflict do nothing;
 
-insert into public.profiles (id, email, currency)
+insert into public.profiles (id, email, currency, retention_keep_aggregates)
 values (
   '00000000-0000-0000-0000-000000000001',
   'demo@example.com',
-  'EUR'
+  'EUR',
+  true
 )
-on conflict (id) do nothing;
+on conflict (id) do update set
+  email = excluded.email,
+  currency = excluded.currency,
+  retention_keep_aggregates = excluded.retention_keep_aggregates;
 
 insert into public.searches (
   id, profile_id, origin, destination, depart_date, return_date,

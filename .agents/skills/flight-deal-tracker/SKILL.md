@@ -17,7 +17,7 @@ Fuente de verdad del plan ejecutable: `docs/plans/FLIGHT-DEAL-TRACKER.md` (con l
 | TFS | Server-side determinista, `hl=es&gl=ES&curr=EUR` en MVP |
 | Cookies | Consent-only anónimas (SOCS). Prohibido login/NID |
 | Bloqueo | Fail-closed + `POST /admin/sources/retry` manual auditado. Sin evasión |
-| Retención | Detalle 3 meses TTL; `price_stats_daily` indefinido; flag `retention.keep_aggregates=false` |
+| Retención | Detalle 3 meses TTL (`run_retention()`); `price_stats_daily` indefinido salvo flag `retention_keep_aggregates=false` (purgar todo) |
 | Alertas | Provider pattern; Telegram primero; bot único |
 | Concurrencia | Leases (tick) en Postgres |
 | Seguridad | RLS multi-tenant día 1 |
@@ -42,6 +42,16 @@ Fuente de verdad del plan ejecutable: `docs/plans/FLIGHT-DEAL-TRACKER.md` (con l
 Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noEmit`), `npm test`. Actualizar `AGENTS.md` cuando se definan.
 
 ## Estado actual
+
+**F4 (Historical) ✅ completado 2026-09-25**:
+- Migración `20260925120910_f4_historical.sql`: trigger `refresh_daily_stats` (AFTER INSERT en `flight_prices`) mantiene `price_stats_daily` (min/avg/max/obs por search+day, recomputado desde detalle, upsert `on conflict (search_id, stats_date)`); `run_retention(age default 3 meses)` purga `flight_prices` viejos conservando agregados salvo profile `retention_keep_aggregates=false` (purgar todo).
+- Seed: `on conflict do update` en profiles (el profile demo lo crea el trigger `handle_new_user` antes que el seed; `do nothing` no actualizaba el flag) + demo `retention_keep_aggregates=true`.
+- UI: sección "Histórico de precios" en `/searches/[id]` (barra CSS de mínimo + `min–max EUR · media X`, sin librerías, datos via RLS de `price_stats_daily`).
+- Auditoría: `docs/audits/f4-historical-audit.md`. E2E UI: histórico 2 días (95–110.50 / 60–95). Checks verdes (lint, typecheck, 25 tests, build).
+
+**F3 (Results) ✅ completado 2026-09-25**:
+- Página `/searches/[id]` (server component, RLS): opciones de la última ejecución terminada (precio, aerolíneas, duración, legs ida+regreso). Botón "Ver resultados" en dashboard (solo si hay ejecución).
+- E2E: MAD→BCN con MockFlightSource → 3 opciones; 2ª ejecución mantiene 3 (dedupe). Commit `a24ea2d`.
 
 **F1 (Foundation) ✅ completado 2026-09-24**:
 - Supabase local OK (CLI, Docker), migración `20260924102308_init.sql` + seed aplicados, `supabase db reset` reproduce limpio.

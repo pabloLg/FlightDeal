@@ -89,6 +89,7 @@ Implementaciones:
 ### F4 — Historical
 - Acumulación histórica, agregados diarios, tendencias.
 - **Criterios**: stats_daily correctos, TTL limpia detalle, tendencias consultables.
+- **Verificado (2026-09-25)**: migración `20260925120910_f4_historical.sql` — trigger `refresh_daily_stats` (AFTER INSERT en `flight_prices`) mantiene `price_stats_daily` (min/avg/max/obs por search+day, recomputado desde detalle) y `run_retention(age)` purga detalle >3 meses conservando agregados salvo `retention_keep_aggregates=false` (purgar todo). Seed demo: flag `true` (tabla ya la creaba el trigger `handle_new_user` → seed `on conflict do update`). UI `/searches/[id]` sección "Histórico de precios" (barra CSS min + min–max/media, sin librerías). Auditoría: `docs/audits/f4-historical-audit.md`. E2E UI con histórico de 2 días (95–110.50 y 60–95 EUR).
 
 ### F5 — Alerts
 - Thresholds por búsqueda, engine de evaluación de buenos precios.

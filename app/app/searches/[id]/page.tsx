@@ -32,6 +32,46 @@ type FlightOptionRow = {
   total_duration_min: number | null;
 };
 
+type PriceStatRow = {
+  stats_date: string;
+  min_price_eur: number;
+  max_price_eur: number;
+  avg_price_eur: number;
+  observations: number;
+};
+
+function PriceHistory({ stats }: { stats: PriceStatRow[] }) {
+  const max = Math.max(...stats.map((s) => s.max_price_eur));
+
+  return (
+    <div className="flex flex-col gap-2">
+      {stats.map((s) => {
+        const barH = Math.max(6, Math.round((s.min_price_eur / max) * 100));
+        return (
+          <div key={s.stats_date} className="flex items-center gap-3 text-sm">
+            <span className="w-24 shrink-0">
+              {new Date(s.stats_date).toLocaleDateString("es-ES")}
+            </span>
+            <div className="flex h-16 flex-1 items-end gap-1">
+              <div
+                className="w-4 rounded-t bg-primary"
+                title={`mín ${s.min_price_eur.toFixed(2)}`}
+                style={{ height: `${barH}%` }}
+              />
+            </div>
+            <span className="w-28 shrink-0 text-right tabular-nums">
+              {s.min_price_eur.toFixed(2)} – {s.max_price_eur.toFixed(2)} EUR
+            </span>
+            <span className="w-24 shrink-0 text-right text-muted-foreground tabular-nums">
+              media {s.avg_price_eur.toFixed(2)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function fmtTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
@@ -103,6 +143,14 @@ export default async function SearchResultsPage({
 
   const rows = (options ?? []) as FlightOptionRow[];
 
+  const { data: stats } = await supabase
+    .from("price_stats_daily")
+    .select("stats_date, min_price_eur, max_price_eur, avg_price_eur, observations")
+    .eq("search_id", id)
+    .order("stats_date", { ascending: true });
+
+  const statsRows = (stats ?? []) as PriceStatRow[];
+
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
@@ -167,6 +215,22 @@ export default async function SearchResultsPage({
           ))}
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Histórico de precios</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {statsRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aún no hay datos históricos. Los agregados diarios (mínimo, máximo
+              y media) aparecerán tras las próximas ejecuciones de esta búsqueda.
+            </p>
+          ) : (
+            <PriceHistory stats={statsRows} />
+          )}
+        </CardContent>
+      </Card>
     </main>
   );
 }
