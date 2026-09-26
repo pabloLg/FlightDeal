@@ -1,0 +1,104 @@
+{
+  "origin": "MAD",
+  "destination": "BCN",
+  "departure_date": "2026-10-15",
+  "return_date": "2026-10-22",
+  "itineraries": [
+    {
+      "price": { "amount": 132, "currency": "EUR", "status": "verified" },
+      "outbound": {
+        "carrier": "Iberia",
+        "duration_minutes": 95,
+        "segments": [
+          {
+            "marketing_carrier_code": "IB",
+            "flight_number": "3107",
+            "operating_carrier_name": "Iberia",
+            "departure_airport": "MAD",
+            "departure_time_local": "2026-10-15T06:00:00",
+            "departure_timezone": "Europe/Madrid",
+            "departure_time_utc": "2026-10-15T04:00:00Z",
+            "arrival_airport": "BCN",
+            "arrival_time_local": "2026-10-15T07:35:00",
+            "arrival_timezone": "Europe/Madrid",
+            "arrival_time_utc": "2026-10-15T05:35:00Z",
+            "duration_minutes": 95,
+            "aircraft": "Airbus A320"
+          }
+        ]
+      },
+      "inbound": {
+        "carrier": "Iberia",
+        "duration_minutes": 100,
+        "segments": [
+          {
+            "marketing_carrier_code": "IB",
+            "flight_number": "3120",
+            "operating_carrier_name": "Iberia",
+            "departure_airport": "BCN",
+            "departure_time_local": "2026-10-22T20:30:00",
+            "departure_timezone": "Europe/Madrid",
+            "departure_time_utc": "2026-10-22T18:30:00Z",
+            "arrival_airport": "MAD",
+            "arrival_time_local": "2026-10-22T22:10:00",
+            "arrival_timezone": "Europe/Madrid",
+            "arrival_time_utc": "2026-10-22T20:10:00Z",
+            "duration_minutes": 100,
+            "aircraft": "Airbus A320"
+          }
+        ]
+      },
+      "cabin_class": "economy",
+      "requires_self_transfer": false,
+      "ignav_id": "a1b2c3d4e5f6789012345678abcdef01"
+    },
+    {
+      "price": { "amount": 97, "currency": "EUR", "status": "verified" },
+      "outbound": {
+        "carrier": "Vueling",
+        "duration_minutes": 95,
+        "segments": [
+          {
+            "marketing_carrier_code": "VY",
+            "flight_number": "8160",
+            "operating_carrier_name": "Vueling",
+            "departure_airport": "MAD",
+            "departure_time_local": "2026-10-15T09:20:00",
+            "departure_timezone": "Europe/Madrid",
+            "departure_time_utc": "2026-10-15T07:20:00Z",
+            "arrival_airport": "BCN",
+            "arrival_time_local": "2026-10-15T10:55:00",
+            "arrival_timezone": "Europe/Madrid",
+            "arrival_time_utc": "2026-10-15T08:55:00Z",
+            "duration_minutes": 95,
+            "aircraft": "Airbus A321"
+          }
+        ]
+      },
+      "inbound": {
+        "carrier": "Vueling",
+        "duration_minutes": 100,
+        "segments": [
+          {
+            "marketing_carrier_code": "VY",
+            "flight_number": "8171",
+            "operating_carrier_name": "Vueling",
+            "departure_airport": "BCN",
+            "departure_time_local": "2026-10-22T18:00:00",
+            "departure_timezone": "Europe/Madrid",
+            "departure_time_utc": "2026-10-22T16:00:00Z",
+            "arrival_airport": "MAD",
+            "arrival_time_local": "2026-10-22T19:40:00",
+            "arrival_timezone": "Europe/Madrid",
+            "arrival_time_utc": "2026-10-22T17:40:00Z",
+            "duration_minutes": 100,
+            "aircraft": "Airbus A321"
+          }
+        ]
+      },
+      "cabin_class": "economy",
+      "requires_self_transfer": false,
+      "ignav_id": "b2c3d4e5f6789012345678abcdef0123"
+    }
+  ]
+}

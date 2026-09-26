@@ -6,7 +6,7 @@ Next.js (App Router, **v16 — ver breaking changes en `node_modules/next/dist/d
 
 ## Fase actual
 
-Plan congelado en `docs/plans/FLIGHT-DEAL-TRACKER.md`. **F1–F5, F7 y F9 ✅ completados** (F9 el 2026-09-26: moneda por perfil, tendencias y rangos flexibles). Siguiente fase: **F8 (Fallback API)**. Docker engine OK (VHDX en `E:\DockerDesktop\wsl`).
+Plan congelado en `docs/plans/FLIGHT-DEAL-TRACKER.md`. **F1–F5, F7, F8 y F9 ✅ completados** (F8 el 2026-09-26: cadena de failover con SerpAPI + Ignav; Kiwi/Tequila fuera por cierre del acceso público). Siguiente: **wiring real del scraper Google** (Playwright + click-through del tramo de regreso), luego F10 y F6. Docker engine OK (VHDX en `E:\DockerDesktop\wsl`).
 
 ## Skills del proyecto (`.agents/skills`)
 

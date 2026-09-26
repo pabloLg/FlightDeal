@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { evaluateAlert } from "@/src/domain/alerts/evaluate-alert";
-import { MockFlightSource } from "@/src/domain/sources/mock-flight-source";
+import { resolveChain, searchWithFailover } from "@/src/domain/sources/chain";
 import type { FlightSearchParams } from "@/src/domain/sources/types";
 
 export type Db = SupabaseClient;
@@ -53,15 +53,40 @@ export async function runExecution(
 
   try {
     await mark({ status: "running", started_at: new Date().toISOString() });
-    const source = new MockFlightSource();
-    const result = await source.search(toSearchParams(search, currency));
+
+    const { sources, skipped } = resolveChain();
+    const outcome = await searchWithFailover(
+      sources,
+      toSearchParams(search, currency),
+    );
+    const result = outcome.result;
+
+    // Fail-closed: every source degraded (or none was configured), so nothing
+    // is persisted and no alert is evaluated against prices we do not have.
+    if (result.degraded) {
+      await mark({
+        status: "degraded",
+        finished_at: new Date().toISOString(),
+        structure_check_passed: false,
+        error_message: result.message ?? "source_degraded",
+        raw_result: {
+          sourceId: outcome.sourceId,
+          attempts: outcome.attempts,
+          skipped,
+        },
+      });
+      return;
+    }
 
     if (result.options.length === 0) {
       await mark({
         status: "completed",
         finished_at: new Date().toISOString(),
         structure_check_passed: true,
-        raw_result: { message: result.message ?? "no_flights" },
+        raw_result: {
+          sourceId: outcome.sourceId,
+          message: result.message ?? "no_flights",
+        },
       });
       return;
     }
@@ -103,7 +128,10 @@ export async function runExecution(
       status: "completed",
       finished_at: new Date().toISOString(),
       structure_check_passed: true,
-      raw_result: { optionCount: result.options.length },
+      raw_result: {
+        sourceId: outcome.sourceId,
+        optionCount: result.options.length,
+      },
     });
 
     await evaluateAndDispatchAlerts(supabase, search);

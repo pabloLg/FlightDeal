@@ -13,7 +13,7 @@ Fuente de verdad del plan ejecutable: `docs/plans/FLIGHT-DEAL-TRACKER.md` (con l
 |---|---|
 | Stack | Next.js (App Router) + TypeScript + React + Tailwind + Supabase + Vercel |
 | Backend | Sin backend separado. Route Handlers + Server Actions. Scheduler: tick interno en Postgres + Vercel Cron |
-| Fuentes | `GoogleFlightsScraperSource` (PRINCIPAL), `MockFlightSource` (dev/test), SerpAPI (F8 fallback), Kiwi (F8 2ª). NO Amadeus |
+| Fuentes | Cadena con failover (`chain.ts`, `FLIGHT_SOURCES` en orden): `GoogleFlightsScraperSource` (PRINCIPAL, aún sin wiring de producción), `SerpApiFlightSource` + `IgnavFlightSource` (F8), `MockFlightSource` (dev/test). **NO Amadeus, NO Kiwi/Tequila** (cerrado 2024-05) |
 | TFS | Server-side determinista, `hl=es&gl=ES&curr=EUR` en MVP |
 | Cookies | Consent-only anónimas (SOCS). Prohibido login/NID |
 | Bloqueo | Fail-closed + `POST /admin/sources/retry` manual auditado. Sin evasión |
@@ -34,6 +34,9 @@ Fuente de verdad del plan ejecutable: `docs/plans/FLIGHT-DEAL-TRACKER.md` (con l
 - `src/domain/sources/FlightSource.ts` — interfaz.
 - `src/domain/sources/GoogleFlightsScraperSource.ts` — scraper.
 - `src/domain/sources/MockFlightSource.ts` — dev/test.
+- `src/domain/sources/chain.ts` — failover: gana la 1ª no degradada; `no_flights` **no** hace failover; `mock` se descarta si hay fuente real; todas degradadas → ejecución `degraded` sin persistir.
+- `src/domain/sources/option-key.ts` — `dedupe_key` derivada de segmentos (nunca del índice).
+- `src/domain/sources/serpapi-source.ts` / `ignav-source.ts` — APIs con fetcher inyectable + fixtures.
 - `.agents/skills/google-flights-scraper/` — skill del scraper.
 - Supabase migrations en carpeta de migraciones (por confirmar al arrancar F1).
 
@@ -45,7 +48,7 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 **F9 (Flexible search) ✅ completado 2026-09-26** (alcance acotado por el usuario a moneda + tendencias + rangos flexibles; multidestino y geografía fuera):
 - Migración `20260925200000_f9_flexible_search.sql`: `searches.date_flex_days` int 0–21. Sin schema nuevo para moneda (`profiles.currency` ya existía) ni tendencias (`price_stats_daily` + trigger F4).
-- `FlightSearchParams.flexDays` (misma interfaz de fuente): `MockFlightSource` devuelve una opción por día de la ventana `-n..+n` (desplaza `departDate`/`returnDate` con `addDays` UTC, determinista, dedupe por fecha real). Sin flex mantiene 3 opciones. `toSearchParams` mapea `date_flex_days`.
+- `FlightSearchParams.flexDays` (misma interfaz de fuente): `MockFlightSource` devuelve una opción por día de la ventana `-n..+n` (desplaza `departDate`/`returnDate` con `addDays` UTC, determinista, dedupe por fecha real). Sin flex mantiene 3 opciones. `toSearchParams` mapea `date_flex_days`. **Las fuentes de API (SerpAPI/Ignav) no hacen flexible**: devuelven `degraded: flex_unsupported` en vez de buscar solo las fechas exactas (fail-closed, sin mentir en silencio); upgrade de una llamada pendiente con `POST /api/fares/search` de Ignav.
 - Moneda por perfil: `app/actions/profile.ts` `updateProfileCurrency` (valida `/^[A-Z]{3}$/` sobre `profiles.currency`, RLS `profiles_owner_update`), UI `components/profile/currency-form.tsx`.
 - Tendencias globales: dashboard con "Tendencias (últimos 7 días)" — mínimo de `price_stats_daily` por búsqueda, ordenado ascendente (RLS existente, sin schema nuevo).
 - Moneda en etiquetas: `PriceHistory`/`AlertHistory` de `/searches/[id]` reciben la moneda del perfil (ya no hardcodean EUR). Sin FX (D8 opcional): cambiar moneda con datos ya guardados mezcla monedas en el histórico — ceiling anotado en la auditoría.
@@ -89,7 +92,7 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Fases pendientes por orden
 
-Ejecución: F1–F5 ✅, **F7 Scheduler ✅**, **F9 Flexible search ✅** (alcance: moneda + tendencias + rangos flexibles) → **F8 Fallback API** → **F10 Optimization** → **F6 Telegram (pospuesta al final, decisión usuario 2026-09-25)**. F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
+Ejecución: F1–F5 ✅, **F7 Scheduler ✅**, **F8 Fallback API ✅**, **F9 Flexible search ✅** (alcance: moneda + tendencias + rangos flexibles) → **wiring real Google (F2c: Playwright + click-through de regreso)** → **F10 Optimization** (incluye `POST /admin/sources/retry` de D6) → **F6 Telegram (pospuesta al final, decisión usuario 2026-09-25)**. F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
 
 ## Normas de trabajo
 

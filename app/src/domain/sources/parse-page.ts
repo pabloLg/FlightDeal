@@ -1,4 +1,5 @@
-import type { FlightSearchParams, FlightOption } from "./types";
+import { optionKey } from "./option-key";
+import type { FlightSearchParams, FlightOption, FlightLeg } from "./types";
 
 // Parser for the Google Flights AF_initDataCallback({key: 'ds:1', ...}) payload.
 // That script carries the search results: an array whose [3][0] entry is the
@@ -161,21 +162,16 @@ export function normalize(
   raw: RawFlightOption[],
   params: FlightSearchParams,
 ): FlightOption[] {
-  return raw.map((option, i) => ({
-    id: `gf-${option.airline}-${option.outboundLegs[0].flightNumber}-${i}`,
-    price: option.price,
-    currency: params.currency,
-    outboundLegs: option.outboundLegs.map((leg) => ({
-      airline: leg.airline,
-      flightNumber: leg.flightNumber,
-      departAirport: leg.departAirport,
-      arriveAirport: leg.arriveAirport,
-      departAt: leg.departAt,
-      arriveAt: leg.arriveAt,
-      durationMin: leg.durationMin,
-    })),
-    inboundLegs: [],
-    airlines: [option.airline],
-    totalDurationMin: option.totalDurationMin,
-  }));
+  return raw.map((option) => {
+    const outboundLegs: FlightLeg[] = option.outboundLegs.map((leg) => ({ ...leg }));
+    return {
+      id: optionKey("gf", outboundLegs, []),
+      price: option.price,
+      currency: params.currency,
+      outboundLegs,
+      inboundLegs: [],
+      airlines: [option.airline],
+      totalDurationMin: option.totalDurationMin,
+    };
+  });
 }
