@@ -51,7 +51,13 @@ type DispatchRow = {
     | null;
 };
 
-function PriceHistory({ stats }: { stats: PriceStatRow[] }) {
+function PriceHistory({
+  stats,
+  currency,
+}: {
+  stats: PriceStatRow[];
+  currency: string;
+}) {
   const max = Math.max(...stats.map((s) => s.max_price_eur));
 
   return (
@@ -66,15 +72,15 @@ function PriceHistory({ stats }: { stats: PriceStatRow[] }) {
             <div className="flex h-16 flex-1 items-end gap-1">
               <div
                 className="w-4 rounded-t bg-primary"
-                title={`mín ${s.min_price_eur.toFixed(2)}`}
+                title={`mín ${s.min_price_eur.toFixed(2)} ${currency}`}
                 style={{ height: `${barH}%` }}
               />
             </div>
             <span className="w-28 shrink-0 text-right tabular-nums">
-              {s.min_price_eur.toFixed(2)} – {s.max_price_eur.toFixed(2)} EUR
+              {s.min_price_eur.toFixed(2)} – {s.max_price_eur.toFixed(2)} {currency}
             </span>
             <span className="w-24 shrink-0 text-right text-muted-foreground tabular-nums">
-              media {s.avg_price_eur.toFixed(2)}
+              media {s.avg_price_eur.toFixed(2)} {currency}
             </span>
           </div>
         );
@@ -124,7 +130,13 @@ function edgeOf(
   return Array.isArray(d.alerts_edge) ? d.alerts_edge[0] : d.alerts_edge;
 }
 
-function AlertHistory({ dispatches }: { dispatches: DispatchRow[] }) {
+function AlertHistory({
+  dispatches,
+  currency,
+}: {
+  dispatches: DispatchRow[];
+  currency: string;
+}) {
   const statusLabel: Record<DispatchRow["status"], string> = {
     dispatched: "Enviada",
     delivered: "Entregada",
@@ -144,11 +156,11 @@ function AlertHistory({ dispatches }: { dispatches: DispatchRow[] }) {
               {new Date(d.dispatched_at).toLocaleString("es-ES")}
             </span>
             <span className="font-medium tabular-nums">
-              {d.price_eur.toFixed(2)} EUR
+              {d.price_eur.toFixed(2)} {currency}
               {edge ? (
                 <span className="text-muted-foreground">
                   {" "}
-                  · umbral {edge.threshold_eur.toFixed(2)}
+                  · umbral {edge.threshold_eur.toFixed(2)} {currency}
                 </span>
               ) : null}
             </span>
@@ -178,6 +190,13 @@ export default async function SearchResultsPage({
     .eq("id", id)
     .single();
   if (searchError || !search) notFound();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("currency")
+    .eq("id", user.id)
+    .single();
+  const currency = profile?.currency ?? "EUR";
 
   const { data: execution, error: executionError } = await supabase
     .from("search_executions")
@@ -290,7 +309,7 @@ const dispatchRows = (dispatches ?? []) as DispatchRow[];
               y media) aparecerán tras las próximas ejecuciones de esta búsqueda.
             </p>
           ) : (
-            <PriceHistory stats={statsRows} />
+            <PriceHistory stats={statsRows} currency={currency} />
           )}
         </CardContent>
       </Card>
@@ -306,7 +325,7 @@ const dispatchRows = (dispatches ?? []) as DispatchRow[];
               disparan cuando el mejor precio baja del umbral configurado.
             </p>
           ) : (
-            <AlertHistory dispatches={dispatchRows} />
+            <AlertHistory dispatches={dispatchRows} currency={currency} />
           )}
         </CardContent>
       </Card>

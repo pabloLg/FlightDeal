@@ -113,6 +113,19 @@ Implementaciones:
 ### F9 — Flexible search
 - Multidestino, rangos flexibles, moneda/geografía por perfil, tendencias globales.
 - **Criterios**: flujos nuevos usan misma interfaz de fuente y retención.
+- **Verificado (2026-09-26)**: alcance acotado por el usuario a moneda + tendencias +
+  rangos flexibles (multidestino y geografía fuera). Migración
+  `20260925200000_f9_flexible_search.sql` (`searches.date_flex_days` 0–21);
+  `FlightSearchParams.flexDays` viaja por la misma interfaz de fuente —
+  `MockFlightSource` devuelve una opción por día de la ventana `-n..+n` (determinista,
+  dedupe por fecha real); `updateProfileCurrency` valida IATA de 3 letras sobre
+  `profiles.currency`; dashboard con "Preferencias" (moneda) y "Tendencias (últimos 7
+  días)" sobre `price_stats_daily` (sin schema nuevo); `PriceHistory`/`AlertHistory`
+  etiquetan con la moneda del perfil. Seed: 2ª búsqueda `MAD → LHR` con flex 5.
+  E2E: EUR→USD→EUR, 11 opciones en ventana flex 5, 5 en flex 2, 2 en flex 0.
+  Unit 33/33, typecheck, lint, build verdes. Auditoría:
+  `docs/audits/f9-flexible-search-audit.md`. Pendiente para F9 completo: multidestino
+  y geografía; FX sigue siendo opcional (D8).
 
 ### F10 — Optimization
 - Métricas, caché, batch, costes. Revisión retención y límites Vercel/Supabase.

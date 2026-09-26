@@ -16,8 +16,11 @@ function hashString(input: string): number {
   return Math.abs(hash);
 }
 
-function dekey(params: FlightSearchParams): string {
-  return [params.origin, params.destination, params.departDate].join("|");
+function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function buildOption(
@@ -72,7 +75,7 @@ function buildOption(
 export class MockFlightSource implements FlightSource {
   readonly id = "mock";
 
-  // deterministic per (origin, destination, departDate)
+  // deterministic per (origin, destination, departDate) and flex window
   async search(params: FlightSearchParams): Promise<FlightSourceResult> {
     await new Promise((resolve) => setTimeout(resolve, 400));
 
@@ -87,10 +90,21 @@ export class MockFlightSource implements FlightSource {
       };
     }
 
-    const seed = hashString(dekey(params));
-    const options = Array.from({ length: 3 }, (_, i) =>
-      buildOption(params, i + 1, seed),
+    const flex = params.flexDays ?? 0;
+    // One option per day across the flex window (or 3 options on the exact date).
+    const offsets = flex > 0 ? range(-flex, flex) : [1, 2, 3];
+    const seed = hashString(
+      [params.origin, params.destination, params.departDate].join("|"),
     );
+    const options = offsets.map((day) => {
+      const departDate =
+        flex > 0 ? addDays(params.departDate, day) : params.departDate;
+      const returnDate =
+        flex > 0 && params.returnDate
+          ? addDays(params.returnDate, day)
+          : params.returnDate;
+      return { ...params, departDate, returnDate, flexDays: undefined };
+    }).map((p, i) => buildOption(p, i + 1, seed + i));
 
     return {
       options,
@@ -103,4 +117,10 @@ export class MockFlightSource implements FlightSource {
   async health(): Promise<HealthStatus> {
     return { ok: true, structureVersion: 1 };
   }
+}
+
+function range(from: number, to: number): number[] {
+  const out: number[] = [];
+  for (let i = from; i <= to; i++) out.push(i);
+  return out;
 }

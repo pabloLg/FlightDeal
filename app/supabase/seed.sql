@@ -45,7 +45,8 @@ on conflict (id) do update set
 
 insert into public.searches (
   id, profile_id, origin, destination, depart_date, return_date,
-  trip_type, cabin_class, stops, adults, enabled, alert_threshold_eur
+  trip_type, cabin_class, stops, adults, enabled, alert_threshold_eur,
+  date_flex_days
 )
 values (
   '00000000-0000-0000-0000-000000000002',
@@ -59,7 +60,30 @@ values (
   'any',
   1,
   true,
-  80.00
+  80.00,
+  0
+)
+on conflict (id) do nothing;
+
+insert into public.searches (
+  id, profile_id, origin, destination, depart_date, return_date,
+  trip_type, cabin_class, stops, adults, enabled, alert_threshold_eur,
+  date_flex_days
+)
+values (
+  '00000000-0000-0000-0000-00000000000a',
+  '00000000-0000-0000-0000-000000000001',
+  'MAD',
+  'LHR',
+  current_date + interval '40 days',
+  current_date + interval '47 days',
+  'round_trip',
+  'economy',
+  'any',
+  1,
+  true,
+  null,
+  5
 )
 on conflict (id) do nothing;
 

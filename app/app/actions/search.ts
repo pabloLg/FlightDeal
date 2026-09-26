@@ -31,6 +31,9 @@ function readForm(formData: FormData) {
     thresholdRaw === null || String(thresholdRaw).trim() === ""
       ? null
       : Number(thresholdRaw);
+  const flexRaw = formData.get("date_flex_days");
+  const date_flex_days =
+    flexRaw === null || String(flexRaw).trim() === "" ? 0 : Number(flexRaw);
   return {
     origin: String(formData.get("origin") ?? "").trim().toUpperCase(),
     destination: String(formData.get("destination") ?? "").trim().toUpperCase(),
@@ -41,6 +44,7 @@ function readForm(formData: FormData) {
     stops: (formData.get("stops") as string) || "any",
     adults: Number(formData.get("adults")) || 1,
     alert_threshold_eur,
+    date_flex_days,
   };
 }
 

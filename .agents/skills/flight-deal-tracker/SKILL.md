@@ -43,6 +43,14 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Estado actual
 
+**F9 (Flexible search) ✅ completado 2026-09-26** (alcance acotado por el usuario a moneda + tendencias + rangos flexibles; multidestino y geografía fuera):
+- Migración `20260925200000_f9_flexible_search.sql`: `searches.date_flex_days` int 0–21. Sin schema nuevo para moneda (`profiles.currency` ya existía) ni tendencias (`price_stats_daily` + trigger F4).
+- `FlightSearchParams.flexDays` (misma interfaz de fuente): `MockFlightSource` devuelve una opción por día de la ventana `-n..+n` (desplaza `departDate`/`returnDate` con `addDays` UTC, determinista, dedupe por fecha real). Sin flex mantiene 3 opciones. `toSearchParams` mapea `date_flex_days`.
+- Moneda por perfil: `app/actions/profile.ts` `updateProfileCurrency` (valida `/^[A-Z]{3}$/` sobre `profiles.currency`, RLS `profiles_owner_update`), UI `components/profile/currency-form.tsx`.
+- Tendencias globales: dashboard con "Tendencias (últimos 7 días)" — mínimo de `price_stats_daily` por búsqueda, ordenado ascendente (RLS existente, sin schema nuevo).
+- Moneda en etiquetas: `PriceHistory`/`AlertHistory` de `/searches/[id]` reciben la moneda del perfil (ya no hardcodean EUR). Sin FX (D8 opcional): cambiar moneda con datos ya guardados mezcla monedas en el histórico — ceiling anotado en la auditoría.
+- Seed: 2ª búsqueda demo `MAD → LHR` con flex 5 (`…000a`). E2E: EUR→USD→USD en UI, flex 5 → 11 opciones, flex 2 → 5, flex 0 → 2. Unit 33/33, typecheck/lint/build verdes. Auditoría: `docs/audits/f9-flexible-search-audit.md`.
+
 **F7 (Scheduler) ✅ completado 2026-09-25**:
 - Migración `20260925150000_f7_scheduler.sql`: `scheduler_tick()` (advisory lock global `flight_deal_tracker_tick`, selección de searches habilitados sin ejecución activa ni terminal en ventana `p_min_interval`, inserta `search_executions` con lease `tick:<txid>` y devuelve las ejecuciones) + `release_expired_leases()` (leases zombie → `failed` tras gracia).
 - Endpoint `POST /api/scheduler/tick` (auth Bearer `CRON_SECRET`, cliente service_role `lib/supabase/admin.ts`, fire-and-forget) + `vercel.json` cron `0 6 * * *` (Vercel Hobby: 1/día).
@@ -81,7 +89,7 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Fases pendientes por orden
 
-Ejecución: F1–F5 ✅, **F7 Scheduler ✅** → **F9 Flexible search** → **F8 Fallback API** → **F10 Optimization** → **F6 Telegram (pospuesta al final, decisión usuario 2026-09-25)**. F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
+Ejecución: F1–F5 ✅, **F7 Scheduler ✅**, **F9 Flexible search ✅** (alcance: moneda + tendencias + rangos flexibles) → **F8 Fallback API** → **F10 Optimization** → **F6 Telegram (pospuesta al final, decisión usuario 2026-09-25)**. F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
 
 ## Normas de trabajo
 

@@ -18,6 +18,7 @@ export type SearchRow = {
   stops: "any" | "non_stop";
   adults: number;
   alert_threshold_eur: number | null;
+  date_flex_days: number;
 };
 
 export function toSearchParams(
@@ -34,6 +35,7 @@ export function toSearchParams(
     stops: search.stops,
     adults: search.adults,
     currency,
+    flexDays: search.date_flex_days || undefined,
   };
 }
 

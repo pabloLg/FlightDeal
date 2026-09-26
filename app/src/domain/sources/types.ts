@@ -12,6 +12,8 @@ export interface FlightSearchParams {
   stops: Stops;
   adults: number;
   currency: string;
+  /** ± days window around departDate/returnDate to explore (0 = exact dates). */
+  flexDays?: number;
 }
 
 export interface FlightLeg {

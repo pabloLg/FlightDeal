@@ -47,4 +47,21 @@ describe("MockFlightSource", () => {
     expect(result.options).toHaveLength(0);
     expect(result.message).toBe("no_flights");
   });
+
+  it("spans the flex window with one option per day when flexDays is set", async () => {
+    const source = new MockFlightSource();
+    const { options } = await source.search({ ...base, flexDays: 2 });
+    expect(options).toHaveLength(5); // -2..+2
+    const dates = options.map((o) => o.outboundLegs[0].departAt.slice(0, 10));
+    expect(dates).toEqual([
+      "2026-12-08",
+      "2026-12-09",
+      "2026-12-10",
+      "2026-12-11",
+      "2026-12-12",
+    ]);
+    // deterministic across runs
+    const again = await source.search({ ...base, flexDays: 2 });
+    expect(again.options.map((o) => o.id)).toEqual(options.map((o) => o.id));
+  });
 });

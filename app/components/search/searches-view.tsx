@@ -36,6 +36,7 @@ type SearchRow = {
   adults: number;
   enabled: boolean;
   alert_threshold_eur: number | null;
+  date_flex_days: number;
 };
 
 type ExecutionRow = {
@@ -163,6 +164,8 @@ export function SearchesView({
                 · {search.trip_type === "one_way" ? "solo ida" : "ida y vuelta"} ·{" "}
                 {search.cabin_class} · {search.adults} pax ·{" "}
                 {search.stops === "non_stop" ? "sin escalas" : "cualquier escala"}
+                {search.date_flex_days > 0 &&
+                  ` · ±${search.date_flex_days} días flexibles`}
               </CardDescription>
               {!search.enabled && (
                 <CardDescription>Desactivada</CardDescription>
@@ -297,6 +300,18 @@ function CreateSearchCard() {
               placeholder="Opcional"
             />
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="date_flex_days">Flexibilidad (± días)</Label>
+            <Input
+              id="date_flex_days"
+              name="date_flex_days"
+              type="number"
+              min={0}
+              max={21}
+              defaultValue={0}
+              placeholder="0 = fechas exactas"
+            />
+          </div>
           <div className="flex flex-col justify-end">
             <Button type="submit" disabled={pending}>
               {pending ? "Creando…" : "Crear búsqueda"}
@@ -369,6 +384,18 @@ function EditSearchForm({
       <Input name="cabin_class" type="hidden" value={search.cabin_class} />
       <Input name="stops" type="hidden" value={search.stops} />
       <Input name="adults" type="hidden" value={search.adults} />
+      <Label htmlFor={`flex-${search.id}`} className="sr-only">
+        Flexibilidad (± días)
+      </Label>
+      <Input
+        id={`flex-${search.id}`}
+        name="date_flex_days"
+        type="number"
+        min={0}
+        max={21}
+        placeholder="±días flex"
+        defaultValue={search.date_flex_days}
+      />
       <Label htmlFor={`alert-${search.id}`} className="sr-only">
         Umbral de alerta (EUR)
       </Label>
