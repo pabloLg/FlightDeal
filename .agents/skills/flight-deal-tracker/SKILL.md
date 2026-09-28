@@ -92,7 +92,7 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Fases pendientes por orden
 
-Ejecución: F1–F5 ✅, **F7 Scheduler ✅**, **F8 Fallback API ✅**, **F9 Flexible search ✅** (alcance: moneda + tendencias + rangos flexibles) → **wiring real Google (F2c: Playwright + click-through de regreso)** → **F10 Optimization** (incluye `POST /admin/sources/retry` de D6) → **F6 Telegram (pospuesta al final, decisión usuario 2026-09-25)**. F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
+Ejecución: F1–F5 ✅, **F7 Scheduler ✅**, **F8 Fallback API ✅**, **F9 Flexible search ✅** (alcance: moneda + tendencias + rangos flexibles), **F2c wiring real Google ✅ (2026-09-28: `playwright-core` + click-through, Chromium aparte, `CHROMIUM_PATH` en self-hosted; ver skill `google-flights-scraper` para las 3 idas de ida)** → **F10 Optimization** (incluye `POST /admin/sources/retry` de D6) → **F6 Telegram (pospuesta al final, decisión usuario 2026-09-25)**. F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
 
 ## Normas de trabajo
 

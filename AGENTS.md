@@ -6,7 +6,9 @@ Next.js (App Router, **v16 — ver breaking changes en `node_modules/next/dist/d
 
 ## Fase actual
 
-Plan congelado en `docs/plans/FLIGHT-DEAL-TRACKER.md`. **F1–F5, F7, F8 y F9 ✅ completados** (F8 el 2026-09-26: cadena de failover con SerpAPI + Ignav; Kiwi/Tequila fuera por cierre del acceso público). Siguiente: **wiring real del scraper Google** (Playwright + click-through del tramo de regreso), luego F10 y F6. Docker engine OK (VHDX en `E:\DockerDesktop\wsl`).
+Plan congelado en `docs/plans/FLIGHT-DEAL-TRACKER.md`. **F1–F5, F7, F8, F9 y F2c ✅ completados** (F2c el 2026-09-28: wiring real del scraper Google con `playwright-core` + click-through del tramo de regreso vía RPC `GetShoppingResults`; Chromium se instala aparte y en self-hosted se apunta con `CHROMIUM_PATH`). **F10 slice 1 ✅**: `ms` por fuente y `durationMs` por ejecución en `raw_result`, y el tick espera las ejecuciones (45 s de presupuesto) porque Vercel mata el fire-and-forget. Siguiente: resto de **F10** (Chromium en Vercel, caché/batch, retención) y luego **F6**. Docker engine OK (VHDX en `E:\DockerDesktop\wsl`).
+
+Chromium (`npx playwright install chromium`, cache en `%LOCALAPPDATA%\ms-playwright`) es requisito para `FLIGHT_SOURCES=google_flights`; sin navegador la fuente degrada y la cadena pasa a SerpAPI/Ignav. En Vercel el navegador sale de `@sparticuz/chromium` (wireframe, 67 MB Brotli en el bundle, se descomprime a `/tmp`), así que no hace falta instalarlo allí.
 
 ## Skills del proyecto (`.agents/skills`)
 

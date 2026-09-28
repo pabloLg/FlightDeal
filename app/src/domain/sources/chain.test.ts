@@ -91,8 +91,8 @@ describe("searchWithFailover", () => {
     expect(outcome.sourceId).toBe("ignav");
     expect(outcome.result.options[0].id).toBe("ignav-option");
     expect(outcome.attempts).toEqual([
-      { sourceId: "serpapi", degraded: true, message: "http_429" },
-      { sourceId: "ignav", degraded: false },
+      { sourceId: "serpapi", degraded: true, message: "http_429", ms: expect.any(Number) },
+      { sourceId: "ignav", degraded: false, ms: expect.any(Number) },
     ]);
   });
 
@@ -137,6 +137,7 @@ describe("searchWithFailover", () => {
       sourceId: "broken",
       degraded: true,
       message: "threw:boom",
+      ms: expect.any(Number),
     });
   });
 });

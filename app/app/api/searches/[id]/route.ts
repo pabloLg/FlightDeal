@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { runExecution, type SearchRow } from "@/src/domain/search/execute-search";
 
 export const runtime = "nodejs";
+// The scrape runs after the 202 is sent but inside the invocation budget:
+// a real google_flights search takes ~10-15 s, over the platform default.
+export const maxDuration = 60;
 
 export async function POST(
   _request: Request,
@@ -43,8 +46,10 @@ export async function POST(
     return NextResponse.json({ error: "execution_start_failed" }, { status: 500 });
   }
 
-  // Loose coupling: not awaited so the client can poll status transitions.
-  void runExecution(supabase, search as SearchRow, execution.id, profile.currency);
+  // Loose coupling: the 202 goes out first so the client can poll status
+  // transitions. `after` (not a bare promise) so serverless platforms keep the
+  // invocation alive until the execution is persisted.
+  after(() => runExecution(supabase, search as SearchRow, execution.id, profile.currency));
 
   return NextResponse.json({ executionId: execution.id }, { status: 202 });
 }

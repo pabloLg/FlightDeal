@@ -5,6 +5,12 @@ import { runExecution, type Db, type SearchRow } from "@/src/domain/search/execu
 
 export const runtime = "nodejs";
 
+// Vercel freezes the invocation as soon as it responds: work started but not
+// awaited never runs. Everything is awaited, sequentially, inside a wall-clock
+// budget; leased executions left over keep their 10 min lease and the next tick
+// picks them up (F10).
+const BUDGET_MS = 45_000;
+
 // Vercel Cron: POST /api/scheduler/tick with Authorization: Bearer <CRON_SECRET>
 export async function POST(request: Request) {
   const auth = request.headers.get("authorization");
@@ -26,12 +32,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ executions: 0 });
   }
 
-  // Loose coupling: run each execution without awaiting so the cron returns fast.
+  const startedAt = Date.now();
+  let done = 0;
+  let deferred = 0;
   for (const exec of executions as { execution_id: string; search_id: string }[]) {
-    void runSearchExecution(supabase, exec.execution_id, exec.search_id);
+    if (Date.now() - startedAt > BUDGET_MS) {
+      deferred++;
+      continue;
+    }
+    await runSearchExecution(supabase, exec.execution_id, exec.search_id);
+    done++;
   }
 
-  return NextResponse.json({ executions: executions.length });
+  return NextResponse.json({
+    executions: executions.length,
+    completed: done,
+    deferred,
+    ms: Date.now() - startedAt,
+  });
 }
 
 async function runSearchExecution(supabase: Db, executionId: string, searchId: string) {

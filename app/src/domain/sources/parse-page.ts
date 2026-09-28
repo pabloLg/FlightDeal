@@ -2,8 +2,9 @@ import { optionKey } from "./option-key";
 import type { FlightSearchParams, FlightOption, FlightLeg } from "./types";
 
 // Parser for the Google Flights AF_initDataCallback({key: 'ds:1', ...}) payload.
-// That script carries the search results: an array whose [3][0] entry is the
-// list of outbound options. Each option is [detail, [priceInfo, token], ...]:
+// That script carries the search results: the [2][0] entry is the featured
+// "best options" block and [3][0] the full list of outbound options. Each option
+// is [detail, [priceInfo, token], ...]:
 //   detail[0]       airline code            detail[0][1] airline name
 //   detail[2]       flight legs (one per segment)
 //     leg[3]        departure airport code  leg[6] arrival airport code
@@ -57,16 +58,32 @@ function formatTime(raw: unknown): string | null {
   return `${pad(h)}:${pad(m)}:00`;
 }
 
-function parseDs1(data: unknown): unknown[][] | null {
-  if (!Array.isArray(data)) return null;
-  const section = data[3];
-  if (!Array.isArray(section)) return null;
-  const options = section[0];
-  if (!Array.isArray(options)) return null;
-  return options as unknown[][];
+// Shared by both carriers of the same payload shape: the page's ds:1 script and
+// the GetShoppingResults RPC body (see rpc-return-legs.ts).
+export function parseOptionsPayload(data: unknown): RawFlightOption[] {
+  if (!Array.isArray(data)) return [];
+  // data[2] is the "best options" block Google shows first (its first entry is
+  // the flight that a click-through would select) and data[3] the rest of the
+  // list. Read both best-first and drop the flights they repeat, otherwise the
+  // cheapest ones never reach the tracker.
+  const seen = new Set<string>();
+  const options: RawFlightOption[] = [];
+  for (const section of [data[2], data[3]]) {
+    const list = Array.isArray(section) ? section[0] : null;
+    if (!Array.isArray(list)) continue;
+    for (const option of list as unknown[][]) {
+      const parsed = parseOption(option);
+      if (parsed === null) continue;
+      const key = optionKey("gf", parsed.outboundLegs, []);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      options.push(parsed);
+    }
+  }
+  return options;
 }
 
-function parseLeg(leg: unknown): RawFlightLeg | null {
+export function parseLeg(leg: unknown): RawFlightLeg | null {
   if (!Array.isArray(leg)) return null;
   const departAirport = leg[3];
   const arriveAirport = leg[6];
@@ -151,11 +168,7 @@ export function extractDs1Json(html: string): unknown {
 export function parsePage(html: string): RawFlightOption[] {
   const data = extractDs1Json(html);
   if (data === null) return [];
-  const options = parseDs1(data);
-  if (!options) return [];
-  return options
-    .map(parseOption)
-    .filter((o): o is RawFlightOption => o !== null);
+  return parseOptionsPayload(data);
 }
 
 export function normalize(

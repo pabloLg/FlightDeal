@@ -51,6 +51,7 @@ export async function runExecution(
       .update({ lease_holder: null, lease_expires_at: null, ...patch })
       .eq("id", executionId);
 
+  const startedAt = Date.now();
   try {
     await mark({ status: "running", started_at: new Date().toISOString() });
 
@@ -60,6 +61,9 @@ export async function runExecution(
       toSearchParams(search, currency),
     );
     const result = outcome.result;
+    // Wall-clock cost of the execution, logged and kept next to the per-source
+    // attempts so timings can be compared later without new tables (F10).
+    const durationMs = Date.now() - startedAt;
 
     // Fail-closed: every source degraded (or none was configured), so nothing
     // is persisted and no alert is evaluated against prices we do not have.
@@ -72,6 +76,7 @@ export async function runExecution(
         raw_result: {
           sourceId: outcome.sourceId,
           attempts: outcome.attempts,
+          durationMs,
           skipped,
         },
       });
@@ -86,6 +91,7 @@ export async function runExecution(
         raw_result: {
           sourceId: outcome.sourceId,
           message: result.message ?? "no_flights",
+          durationMs,
         },
       });
       return;
@@ -131,6 +137,8 @@ export async function runExecution(
       raw_result: {
         sourceId: outcome.sourceId,
         optionCount: result.options.length,
+        attempts: outcome.attempts,
+        durationMs: Date.now() - startedAt,
       },
     });
 
@@ -141,6 +149,7 @@ export async function runExecution(
       status: "failed",
       finished_at: new Date().toISOString(),
       error_message: message,
+      raw_result: { durationMs: Date.now() - startedAt },
     });
   }
 }

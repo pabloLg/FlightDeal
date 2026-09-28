@@ -1,6 +1,11 @@
 import type { FlightSource } from "./flight-source";
+import { GoogleFlightsScraperSource } from "./google-flights-scraper-source";
 import { IgnavFlightSource } from "./ignav-source";
 import { MockFlightSource } from "./mock-flight-source";
+import {
+  playwrightHtmlFetcher,
+  playwrightReturnLegsFetcher,
+} from "./playwright-fetcher";
 import { SerpApiFlightSource } from "./serpapi-source";
 import type { FlightSearchParams, FlightSourceResult } from "./types";
 
@@ -13,7 +18,7 @@ export interface SourceEnv {
 export interface ChainOutcome {
   result: FlightSourceResult;
   sourceId: string;
-  attempts: { sourceId: string; degraded: boolean; message?: string }[];
+  attempts: { sourceId: string; degraded: boolean; ms: number; message?: string }[];
 }
 
 export function resolveChain(
@@ -35,6 +40,16 @@ export function resolveChain(
     switch (name) {
       case "mock":
         sources.push(new MockFlightSource());
+        break;
+      case "google_flights":
+        // No key needed; the browser binary is the prerequisite (launch
+        // failure degrades the source, the chain moves on).
+        sources.push(
+          new GoogleFlightsScraperSource(
+            playwrightHtmlFetcher,
+            playwrightReturnLegsFetcher,
+          ),
+        );
         break;
       case "serpapi":
         if (env.SERPAPI_API_KEY) {
@@ -73,6 +88,7 @@ export async function searchWithFailover(
 
   for (const source of sources) {
     let result: FlightSourceResult;
+    const startedAt = Date.now();
     try {
       result = await source.search(params);
     } catch (error) {
@@ -90,6 +106,9 @@ export async function searchWithFailover(
     attempts.push({
       sourceId: source.id,
       degraded: result.degraded,
+      // Per-source cost in ms: what the scraper actually spends per route, and
+      // where the failover budget goes (F10).
+      ms: Date.now() - startedAt,
       ...(result.message ? { message: result.message } : {}),
     });
     if (!result.degraded) return { result, sourceId: source.id, attempts };
