@@ -135,11 +135,16 @@ export async function runExecution(
       .eq("search_id", search.id);
 
     const priceByKeyClone = new Map(priceByKey);
+    // Only prices this run actually observed. Defaulting the rest to 0 wrote a
+    // fabricated observation into the history and dragged the daily minimum to
+    // 0, which is what the trends card showed.
     await supabase.from("flight_prices").insert(
-      (optionRows ?? []).map((o: { id: string; dedupe_key: string }) => ({
-        flight_option_id: o.id,
-        price_eur: priceByKeyClone.get(o.dedupe_key) ?? 0,
-      })),
+      (optionRows ?? []).flatMap((o: { id: string; dedupe_key: string }) => {
+        const price = priceByKeyClone.get(o.dedupe_key);
+        return price === undefined
+          ? []
+          : [{ flight_option_id: o.id, price_eur: price }];
+      }),
     );
 
     await mark({
