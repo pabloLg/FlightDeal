@@ -48,6 +48,31 @@ function budgetLeft(deadline: number, label: string): number {
   return ms;
 }
 
+// Playwright's own timeouts only cover the calls that take a `timeout` option
+// (goto, waitFor, waitForResponse). Everything else in this file can outlive
+// the invocation on a cold lambda: unpacking the 67 MB wireframe, launch(),
+// newContext(), page.content(). A cold run of the dashboard's "Ejecutar" button
+// hung in one of those for the full 60 s and left its execution stuck in
+// running, because nothing was racing it. This is the missing ceiling.
+export async function withBudget<T>(
+  work: Promise<T>,
+  deadline: number,
+  label: string,
+): Promise<T> {
+  const ms = budgetLeft(deadline, label);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`budget_exhausted:${label}`)), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 let browser: Promise<Browser> | null = null;
 
 // Where the Chromium binary comes from:
@@ -65,52 +90,74 @@ export function browserPlan(env: {
   return env.VERCEL ? "vercel" : "playwright";
 }
 
-async function launch(): Promise<Browser> {
+async function launch(deadline: number): Promise<Browser> {
   const { chromium } = await import("playwright-core");
   const plan = browserPlan({
     CHROMIUM_PATH: process.env.CHROMIUM_PATH,
     VERCEL: process.env.VERCEL,
   });
   if (plan === "chromium_path") {
-    return chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH });
+    return chromium.launch({
+      headless: true,
+      executablePath: process.env.CHROMIUM_PATH,
+      timeout: budgetLeft(deadline, "launch"),
+    });
   }
   if (plan === "vercel") {
     const wireframe = await import("@sparticuz/chromium");
     const binary = wireframe.default;
     return chromium.launch({
       headless: true,
-      executablePath: await binary.executablePath(),
+      // Cold start unpacks the wireframe into /tmp, which is where the hang was.
+      executablePath: await withBudget(
+        binary.executablePath(),
+        deadline,
+        "chromium_path",
+      ),
       args: binary.args,
+      timeout: budgetLeft(deadline, "launch"),
     });
   }
-  return chromium.launch({ headless: true });
+  return chromium.launch({
+    headless: true,
+    timeout: budgetLeft(deadline, "launch"),
+  });
 }
 
 // The cache has to be validated, not just non-null: a warm lambda can be frozen
 // between invocations and come back with its Chromium process already gone,
 // which left every fetch failing with "Target page, context or browser has been
 // closed" while the stale handle still looked fine.
-async function getBrowser(): Promise<Browser> {
+async function getBrowser(deadline: number): Promise<Browser> {
   if (browser) {
     const cached = await browser.catch(() => null);
     if (cached?.isConnected()) return cached;
   }
   const startedAt = Date.now();
-  browser = launch().then((launched) => {
+  browser = withBudget(launch(deadline), deadline, "launch").then((launched) => {
     console.log(`[scrape] browser launched in ${Date.now() - startedAt}ms`);
     return launched;
   });
   return browser;
 }
 
-async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
-  const context = await (await getBrowser()).newContext({ locale: "es-ES" });
-  await context.addCookies([CONSENT_COOKIE]);
-  const page = await context.newPage();
+async function withPage<T>(
+  deadline: number,
+  fn: (page: Page) => Promise<T>,
+): Promise<T> {
+  const context = await withBudget(
+    (await getBrowser(deadline)).newContext({ locale: "es-ES" }),
+    deadline,
+    "context",
+  );
+  await withBudget(context.addCookies([CONSENT_COOKIE]), deadline, "cookies");
+  const page = await withBudget(context.newPage(), deadline, "page");
   try {
     return await fn(page);
   } finally {
-    await context.close();
+    // Teardown gets its own small ceiling: it must not be able to strand a
+    // scrape that already produced its data.
+    await withBudget(context.close(), Date.now() + 5_000, "close").catch(() => {});
   }
 }
 
@@ -136,7 +183,7 @@ async function openResults(page: Page, url: string, deadline: number): Promise<v
 }
 
 export const playwrightHtmlFetcher: HtmlFetcher = (url, deadline) =>
-  withPage(async (page) => {
+  withPage(deadline, async (page) => {
     const startedAt = Date.now();
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -147,7 +194,7 @@ export const playwrightHtmlFetcher: HtmlFetcher = (url, deadline) =>
           .locator(RESULTS_CARD)
           .first()
           .waitFor({ state: "attached", timeout: budgetLeft(deadline, "results_card") });
-        const html = await page.content();
+        const html = await withBudget(page.content(), deadline, "content");
         // Google sometimes serves the shell before the server-rendered payload
         // (cards arrive from an RPC and ds:1 never lands in the HTML). Reloading
         // hits the payload-bearing variant; if both come up empty the source
@@ -168,7 +215,7 @@ export const playwrightHtmlFetcher: HtmlFetcher = (url, deadline) =>
   });
 
 export const playwrightReturnLegsFetcher: ReturnLegsFetcher = (url, deadline) =>
-  withPage(async (page) => {
+  withPage(deadline, async (page) => {
     const startedAt = Date.now();
     try {
       return await readReturnLegs(page, url, deadline);
@@ -203,12 +250,16 @@ async function readReturnLegs(page: Page, url: string, deadline: number): Promis
   // fires no RPC: re-click instead of giving up, it is idempotent.
   for (;;) {
     clicked = true;
-    await card.evaluate((element: Element) => (element as HTMLElement).click());
+    await withBudget(
+      card.evaluate((element: Element) => (element as HTMLElement).click()),
+      deadline,
+      "select_outbound",
+    );
     try {
       const response = await page.waitForResponse(isReturnList, {
         timeout: Math.min(15_000, budgetLeft(deadline, "return_list")),
       });
-      const body = await response.text();
+      const body = await withBudget(response.text(), deadline, "return_list_body");
       if (parseReturnLegs(body)) return body;
     } catch {
       // No matching response within the slice: re-click below.
