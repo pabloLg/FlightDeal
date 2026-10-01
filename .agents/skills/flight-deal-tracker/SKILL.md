@@ -37,6 +37,10 @@ Fuente de verdad del plan ejecutable: `docs/plans/FLIGHT-DEAL-TRACKER.md` (con l
 - `src/domain/sources/chain.ts` — failover: gana la 1ª no degradada; `no_flights` **no** hace failover; `mock` se descarta si hay fuente real; todas degradadas → ejecución `degraded` sin persistir.
 - `src/domain/sources/option-key.ts` — `dedupe_key` derivada de segmentos (nunca del índice).
 - `src/domain/sources/serpapi-source.ts` / `ignav-source.ts` — APIs con fetcher inyectable + fixtures.
+- `src/domain/search/execute-search.ts` — `runExecution` (persistencia + alertas + `context` de auditoría) y `runSearchById` (carga búsqueda + moneda, la usan el cron y el retry).
+- `src/domain/search/retry-guard.ts` — reglas puras del reintento manual (D6).
+- `app/api/scheduler/tick/route.ts` — cron: retención + `scheduler_tick` + ejecuciones esperadas.
+- `app/api/admin/sources/retry/route.ts` — reintento manual auditado (`Bearer CRON_SECRET`, body `{ searchId }`).
 - `.agents/skills/google-flights-scraper/` — skill del scraper.
 - Supabase migrations en carpeta de migraciones (por confirmar al arrancar F1).
 
@@ -45,6 +49,12 @@ Fuente de verdad del plan ejecutable: `docs/plans/FLIGHT-DEAL-TRACKER.md` (con l
 Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noEmit`), `npm test`. Actualizar `AGENTS.md` cuando se definan.
 
 ## Estado actual
+
+**F10 (Optimization) slices 1-3 ✅ 2026-09-29** — pendiente solo la verificación en deploy real:
+- **Slice 1 (2026-09-28)**: bug real de F7 corregido — el tick lanzaba con `void` y Vercel congela la invocación al responder, así que el cron no ejecutaba nada en prod. Ahora espera secuencialmente con presupuesto de 45 s (el resto `deferred` → siguiente tick). Métricas sin tablas nuevas: `ms` por intento en `attempts`, `durationMs` en `raw_result`. Scraper ~10 s/ruta vs ~0,5 s de las APIs.
+- **Slice 2 (2026-09-28)**: Chromium en Vercel vía wireframe `@sparticuz/chromium` (bundle no entra); `browserPlan(env)` = `CHROMIUM_PATH` > `VERCEL` > playwright-core propio; `next.config.ts` `outputFileTracingIncludes` para los `.br`.
+- **Slice 3 (2026-09-29)**: `run_retention()` (F4) **no tenía caller** → el tick la ejecuta con `service_role` antes de raspar (también en ticks vacíos) y devuelve `pricesPurged`. `POST /api/admin/sources/retry` (D6): `Bearer <CRON_SECRET>`, body `{ searchId }`, `maxDuration = 60` con el scrape esperado, auditoría **sin tabla nueva** (otra fila de `search_executions` + `context` 5º param de `runExecution` → `raw_result.actor = "admin"`, `retriedFrom`). Guard puro `src/domain/search/retry-guard.ts`: 429 `execution_in_flight` | `last_execution_completed` | `cooldown` (15 min, solo si la última fue ya retry admin). `runSearchById` compartido por cron y retry. 96 tests. Auditoría: `docs/audits/f10-optimization-audit.md`.
+- **Ojo al desplegar**: las env de Vercel deben apuntar al Supabase **hospedado**; `app/.env` tiene `localhost:54321` y el tick escribiría en la BD local.
 
 **F9 (Flexible search) ✅ completado 2026-09-26** (alcance acotado por el usuario a moneda + tendencias + rangos flexibles; multidestino y geografía fuera):
 - Migración `20260925200000_f9_flexible_search.sql`: `searches.date_flex_days` int 0–21. Sin schema nuevo para moneda (`profiles.currency` ya existía) ni tendencias (`price_stats_daily` + trigger F4).
@@ -92,7 +102,7 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Fases pendientes por orden
 
-Ejecución: F1–F5 ✅, **F7 Scheduler ✅**, **F8 Fallback API ✅**, **F9 Flexible search ✅** (alcance: moneda + tendencias + rangos flexibles), **F2c wiring real Google ✅ (2026-09-28: `playwright-core` + click-through, Chromium aparte, `CHROMIUM_PATH` en self-hosted; ver skill `google-flights-scraper` para las 3 idas de ida)** → **F10 Optimization** (incluye `POST /admin/sources/retry` de D6) → **F6 Telegram (pospuesta al final, decisión usuario 2026-09-25)**. F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
+Ejecución: F1–F5 ✅, **F7 Scheduler ✅**, **F8 Fallback API ✅**, **F9 Flexible search ✅** (alcance: moneda + tendencias + rangos flexibles), **F2c wiring real Google ✅ (2026-09-28: `playwright-core` + click-through, Chromium aparte, `CHROMIUM_PATH` en self-hosted; ver skill `google-flights-scraper` para las 3 idas de ida)**, **F10 slices 1-3 ✅** → queda **verificar F10 en un deploy real de Vercel** (y luego decidir `p_batch_size` con los `ms` medidos) → **F6 Telegram (última fase, decisión usuario 2026-09-25: primero una versión funcionando)**. Aplazados por decisión del usuario: flexible-dates de Ignav, regreso de SerpAPI (2ª request). F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
 
 ## Normas de trabajo
 

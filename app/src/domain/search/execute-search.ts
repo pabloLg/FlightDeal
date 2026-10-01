@@ -44,6 +44,9 @@ export async function runExecution(
   search: SearchRow,
   executionId: string,
   currency: string,
+  // Free-form audit trail merged into every raw_result the execution writes
+  // (the audited retry endpoint passes who retried what).
+  context?: Record<string, unknown>,
 ) {
   const mark = (patch: Record<string, unknown>) =>
     supabase
@@ -74,6 +77,7 @@ export async function runExecution(
         structure_check_passed: false,
         error_message: result.message ?? "source_degraded",
         raw_result: {
+          ...context,
           sourceId: outcome.sourceId,
           attempts: outcome.attempts,
           durationMs,
@@ -89,6 +93,7 @@ export async function runExecution(
         finished_at: new Date().toISOString(),
         structure_check_passed: true,
         raw_result: {
+          ...context,
           sourceId: outcome.sourceId,
           message: result.message ?? "no_flights",
           durationMs,
@@ -135,6 +140,7 @@ export async function runExecution(
       finished_at: new Date().toISOString(),
       structure_check_passed: true,
       raw_result: {
+        ...context,
         sourceId: outcome.sourceId,
         optionCount: result.options.length,
         attempts: outcome.attempts,
@@ -149,9 +155,36 @@ export async function runExecution(
       status: "failed",
       finished_at: new Date().toISOString(),
       error_message: message,
-      raw_result: { durationMs: Date.now() - startedAt },
+      raw_result: { ...context, durationMs: Date.now() - startedAt },
     });
   }
+}
+
+// Load a search with its owner currency and run it. Both callers that only know
+// ids (the cron tick, the audited retry) go through here instead of repeating
+// the two lookups.
+export async function runSearchById(
+  supabase: Db,
+  searchId: string,
+  executionId: string,
+  context?: Record<string, unknown>,
+): Promise<boolean> {
+  const { data: search } = await supabase
+    .from("searches")
+    .select("*")
+    .eq("id", searchId)
+    .single();
+  if (!search) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("currency")
+    .eq("id", (search as SearchRow).profile_id)
+    .single();
+  if (!profile) return false;
+
+  await runExecution(supabase, search as SearchRow, executionId, profile.currency, context);
+  return true;
 }
 
 export async function evaluateAndDispatchAlerts(
