@@ -140,6 +140,37 @@ describe("searchWithFailover", () => {
       ms: expect.any(Number),
     });
   });
+
+  it("does not ask a source for results the budget cannot cover", async () => {
+    // A source that burns the whole chain budget (the browser scraper does) must
+    // leave the next one recorded as skipped, not called: asking anyway is what
+    // got the invocation killed past the platform cap with nothing recorded.
+    const hungry: FlightSource = {
+      id: "hungry",
+      async search() {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        return { ...ok("hungry"), degraded: true, message: "took_too_long" };
+      },
+      async health() {
+        return { ok: true };
+      },
+    };
+
+    const outcome = await searchWithFailover(
+      [hungry, stub("serpapi", ok("serpapi"))],
+      params,
+      20,
+    );
+
+    expect(outcome.sourceId).toBe("serpapi");
+    expect(outcome.result.degraded).toBe(true);
+    expect(outcome.attempts[1]).toEqual({
+      sourceId: "serpapi",
+      degraded: true,
+      ms: 0,
+      message: "budget_exhausted:chain",
+    });
+  });
 });
 
 describe("resolveChain", () => {

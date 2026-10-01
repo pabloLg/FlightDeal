@@ -56,7 +56,14 @@ export async function runExecution(
 
   const startedAt = Date.now();
   try {
-    await mark({ status: "running", started_at: new Date().toISOString() });
+    // Deliberately not mark(): that helper also clears the lease, and the lease
+    // is what release_expired_leases() needs to reap this execution if the
+    // runner dies mid-scrape. Clearing it here left crashed executions stuck in
+    // 'running' forever, blocking their search from every future tick.
+    await supabase
+      .from("search_executions")
+      .update({ status: "running", started_at: new Date().toISOString() })
+      .eq("id", executionId);
 
     const { sources, skipped } = resolveChain();
     const outcome = await searchWithFailover(

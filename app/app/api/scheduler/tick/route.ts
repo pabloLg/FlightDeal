@@ -44,12 +44,20 @@ export async function POST(request: Request) {
   const startedAt = Date.now();
   let done = 0;
   let deferred = 0;
+  // Fits the *next* search before starting it, not just the elapsed time: a
+  // search that took 50 s must not be followed by another inside a 60 s
+  // invocation. Slowest-so-far seeds the estimate and then measures itself, so
+  // a route that degrades at its budget does not stall the queue.
+  let slowestMs = 30_000;
   for (const exec of executions as { execution_id: string; search_id: string }[]) {
-    if (Date.now() - startedAt > BUDGET_MS) {
+    if (Date.now() - startedAt + slowestMs > BUDGET_MS) {
       deferred++;
       continue;
     }
+    const searchStartedAt = Date.now();
     await runSearchById(supabase, exec.search_id, exec.execution_id);
+    slowestMs = Math.max(slowestMs, Date.now() - searchStartedAt);
+    console.log(`[tick] search done in ${Date.now() - searchStartedAt}ms, elapsed ${Date.now() - startedAt}ms`);
     done++;
   }
 

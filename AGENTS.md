@@ -6,9 +6,13 @@ Next.js (App Router, **v16 — ver breaking changes en `node_modules/next/dist/d
 
 ## Fase actual
 
-Plan congelado en `docs/plans/FLIGHT-DEAL-TRACKER.md`. **F1–F5, F7, F8, F9 y F2c ✅ completados** (F2c el 2026-09-28: wiring real del scraper Google con `playwright-core` + click-through del tramo de regreso vía RPC `GetShoppingResults`; Chromium se instala aparte y en self-hosted se apunta con `CHROMIUM_PATH`). **F10 slices 1-3 ✅**: métricas (`ms` por fuente, `durationMs` por ejecución) en `raw_result` + tick que espera las ejecuciones (45 s) porque Vercel mata el fire-and-forget; Chromium en Vercel vía `@sparticuz/chromium`; `run_retention()` ejecutada desde el tick y `POST /api/admin/sources/retry` (D6, `Bearer CRON_SECRET`, auditoría en `search_executions`). Siguiente: verificación en deploy real de F10 y luego **F6** (Telegram). Docker engine OK (VHDX en `E:\DockerDesktop\wsl`).
+Plan congelado en `docs/plans/FLIGHT-DEAL-TRACKER.md`. **F1–F5, F7, F8, F9, F2c y F10 ✅ completados** (F2c el 2026-09-28: wiring real del scraper Google con `playwright-core` + click-through del tramo de regreso vía RPC `GetShoppingResults`; Chromium se instala aparte y en self-hosted se apunta con `CHROMIUM_PATH`. F10 el 2026-10-01, verificado en deploy real). Siguiente: **F6** (Telegram). Docker engine OK (VHDX en `E:\DockerDesktop\wsl`).
+
+Producción: Vercel `flight-deal` (scope `pablo-cdfb`, Root Directory `app`) contra Supabase hospedado `extpuygtrjvqzkmouqef`. **Desplegar desde la raíz del repo** (`E:\Scrapping`), nunca desde `app/`: el Root Directory se aplicaría dos veces y falla con `No Next.js version detected`. Cadenas de `vercel curl` usan `$env:VERCEL_TOKEN` (con `--token` el valor se reenvía al curl y falla).
 
 Chromium (`npx playwright install chromium`, cache en `%LOCALAPPDATA%\ms-playwright`) es requisito para `FLIGHT_SOURCES=google_flights`; sin navegador la fuente degrada y la cadena pasa a SerpAPI/Ignav. En Vercel el navegador sale de `@sparticuz/chromium` (wireframe, 67 MB Brotli en el bundle, se descomprime a `/tmp`), así que no hace falta instalarlo allí.
+
+**El tope de 60 s de la invocación de Vercel (`maxDuration`) es la restricción que manda en el diseño del scraper.** Nada dentro puede esperar sin techo: el presupuesto por búsqueda (`SCRAPE_BUDGET_MS`, 30 s) lo calcula `GoogleFlightsScraperSource.search()` y lo reciben `HtmlFetcher`/`ReturnLegsFetcher` (una búsqueda son **dos** cargas: resultados + regreso), `stepTimeout()` acota cada espera y lanza `budget_exhausted:<paso>`, el chain no pregunta a otra fuente si se agotó, y las fuentes HTTP llevan `AbortSignal.timeout(10_000)`. Una ejecución muerta a mitad bloquea su search para siempre, así que el lease se conserva mientras corre y `release_expired_leases()` recupera por lease **y por edad** (el retry manual inserta sin lease).
 
 ## Skills del proyecto (`.agents/skills`)
 

@@ -1,5 +1,6 @@
 import type { FlightSource } from "./flight-source";
 import { GoogleFlightsScraperSource } from "./google-flights-scraper-source";
+import { SEARCH_BUDGET_MS } from "./flight-source";
 import { IgnavFlightSource } from "./ignav-source";
 import { MockFlightSource } from "./mock-flight-source";
 import {
@@ -82,11 +83,36 @@ export function resolveChain(
 export async function searchWithFailover(
   sources: FlightSource[],
   params: FlightSearchParams,
+  budgetMs: number = SEARCH_BUDGET_MS,
 ): Promise<ChainOutcome> {
   const attempts: ChainOutcome["attempts"] = [];
   let last: { result: FlightSourceResult; sourceId: string } | null = null;
+  // One budget for the whole chain: a source that burns all of it (the browser
+  // scraper is the usual one) leaves no time for a fallback, and asking anyway is
+  // how the invocation gets killed at the platform cap with nothing recorded.
+  const deadline = Date.now() + budgetMs;
 
   for (const source of sources) {
+    if (Date.now() >= deadline) {
+      attempts.push({
+        sourceId: source.id,
+        degraded: true,
+        ms: 0,
+        message: "budget_exhausted:chain",
+      });
+      last = {
+        result: {
+          options: [],
+          currency: params.currency,
+          structureVersion: 0,
+          degraded: true,
+          message: "budget_exhausted:chain",
+        },
+        sourceId: source.id,
+      };
+      continue;
+    }
+
     let result: FlightSourceResult;
     const startedAt = Date.now();
     try {
@@ -103,14 +129,18 @@ export async function searchWithFailover(
       };
     }
 
-    attempts.push({
+    const attempt = {
       sourceId: source.id,
       degraded: result.degraded,
       // Per-source cost in ms: what the scraper actually spends per route, and
       // where the failover budget goes (F10).
       ms: Date.now() - startedAt,
       ...(result.message ? { message: result.message } : {}),
-    });
+    };
+    console.log(
+      `[chain] ${attempt.sourceId} ${attempt.degraded ? "degraded" : "ok"} in ${attempt.ms}ms${attempt.message ? ` (${attempt.message})` : ""}`,
+    );
+    attempts.push(attempt);
     if (!result.degraded) return { result, sourceId: source.id, attempts };
     last = { result, sourceId: source.id };
   }

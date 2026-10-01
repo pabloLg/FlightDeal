@@ -16,9 +16,15 @@ export interface JsonResponse {
 
 export type JsonFetcher = (request: JsonRequest) => Promise<JsonResponse>;
 
+// Per-request cap so a stalled API cannot eat the invocation: without it a
+// hanging SerpAPI/Ignav response ran the tick past the platform's 60 s and the
+// execution was killed with nothing recorded.
+const REQUEST_TIMEOUT_MS = 10_000;
+
 export const httpJsonFetcher: JsonFetcher = async (request) => {
   const response = await fetch(request.url, {
     method: request.method,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     ...(request.headers ? { headers: request.headers } : {}),
     ...(request.body ? { body: request.body } : {}),
   });

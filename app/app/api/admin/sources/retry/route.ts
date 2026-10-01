@@ -30,6 +30,9 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
+  // Reap first: without this a runner killed mid-scrape (Vercel 60 s cap) leaves
+  // a lease-less 'running' row that canRetry can never get past.
+  await supabase.rpc("release_expired_leases");
   const { data: search } = await supabase
     .from("searches")
     .select("id")

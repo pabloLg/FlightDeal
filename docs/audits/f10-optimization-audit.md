@@ -88,13 +88,78 @@ select count(*) … where observed_at < now() - interval '3 months' → 0
 
 ## Pendiente de F10
 
-- **Verificación en producción** (criterio de aceptación de F10): `vercel link`, env en Vercel con el
-  Supabase **hospedado** (en `app/.env` la URL es `localhost:54321`), `vercel --prod`, `curl` al tick y
-  lectura de `raw_result.attempts[].ms` / `durationMs`. En especial: si `google_flights` degrada (wireframe
-  de Chromium en `/tmp`) o cae a SerpAPI/Ignav. Bloqueante: login de Vercel.
-- Caché/batch por ruta: con ~10 s por ruta y lote 10, el presupuesto de 45 s solo cabe ~4 y el resto
-  queda `deferred` al siguiente tick. Se decide con los `ms` reales de producción (bajar
-  `p_batch_size` antes que añadir caché).
 - F6 Telegram (el contrato `alerts_edge` + `alert_dispatches` ya está listo y el endpoint lo deja
   `dispatched`).
 - Aplazados por decisión del usuario: flexible-dates en Ignav, regreso de SerpAPI (2ª request).
+
+## Verificación en producción (2026-10-01)
+
+Proyecto `flight-deal` (scope `pablo-cdfb`), Supabase hospedado `extpuygtrjvqzkmouqef`. Desplegar desde
+la **raíz** del repo: con Root Directory `app` en el proyecto, desplegar desde `app/` lo aplica dos
+veces y falla con `No Next.js version detected`.
+
+### Bugs que sólo aparecen en producción
+
+Cinco, y el mismo motivo raíz en todos: **la invocación de Vercel tiene un tope de 60 s y nada dentro
+estaba acotado a él**. Cada fallo deja la ejecución a medias, y una ejecución a medias bloquea su
+search para siempre.
+
+1. **`playwright-core` fuera del bundle** (`Cannot find module .../browsers.json`): `serverExternalPackages`
+   + trace de `./node_modules/playwright-core/**/*` en `next.config.ts`.
+2. **El lease se borraba al entrar en la ejecución**: `mark()` limpiaba `lease_holder`/`lease_expires_at`
+   también en la marca `running` inicial, así que `release_expired_leases()` no podía recuperar una
+   ejecución cuyo runner murió a mitad. `runExecution` marca `running` sin tocar el lease.
+3. **El reaper sólo miraba el lease**: un retry manual inserta `pending` sin lease, así que su ejecución
+   muerta tampoco era recuperable. `release_expired_leases()` recupera ahora también por edad
+   (`created_at < now() - grace`) y el endpoint de retry lo llama antes de evaluar `canRetry`.
+   Migración `20261001210000_f10_lease_reaper_by_age.sql`.
+4. **Sin presupuesto por búsqueda**: dos esperas de 45 s dentro de una fetch ya superan el tope. El
+   deadline lo calcula `GoogleFlightsScraperSource.search()` y lo reciben `HtmlFetcher`/`ReturnLegsFetcher`;
+   `stepTimeout()` acota cada espera a lo que queda y lanza `budget_exhausted:<paso>` en vez de esperar.
+   Una búsqueda son **dos** cargas (resultados + regreso), por eso el presupuesto va por búsqueda y no
+   por fetch. El chain tampoco pregunta a una fuente nueva si se agotó (`budget_exhausted:chain`).
+5. **Caché de navegador sin validar**: una lambda caliente puede volver con el proceso Chromium ya
+   muerto (`Target page, context or browser has been closed`); `getBrowser()` comprueba `isConnected()`
+   antes de reutilizar.
+
+Además `httpJsonFetcher` no tenía timeout: una SerpAPI/Ignav colgada se comía la invocación. Ahora
+`AbortSignal.timeout(10_000)`.
+
+### Tiempos reales (Vercel Hobby, `maxDuration = 60`)
+
+| fase | ms |
+|---|---|
+| launch Chromium (`@sparticuz/chromium`) | 3 167 |
+| HTML de resultados | 4 017 |
+| búsqueda completa MAD→BCN (ida + regreso) | 9 830 |
+| búsqueda completa MAD→LHR (flex 5, sin regreso) | 6 221 |
+| tick con 2 búsquedas | 19 194 |
+| SerpAPI (verificado local con clave real) | 2 390 |
+| Ignav (verificado local con clave real) | 5 090 |
+
+En local la misma búsqueda tarda 9 015 ms y el parseo de 2.4 MB son 11 ms: **el coste no es la CPU ni
+Google, es el margen del plataforma**. Con `SCRAPE_BUDGET_MS = 30000` y el tick adaptativo (comprueba que
+la *próxima* búsqueda quepa, no sólo el tiempo transcurrido) el tick termina sin matar la invocación.
+
+### Cadena de failover
+
+`FLIGHT_SOURCES=google_flights,serpapi,ignav`. Ambas APIs verificadas con clave real (SerpAPI 17 opciones
+112–463 EUR, Ignav 235 opciones 126–531 EUR; rangos compatibles con los de Google). En el tick de
+verificación respondieron las dos por `google_flights`, que es lo esperado: los fallbacks sólo arden
+cuando Google degrada, y para entonces el chain puede quedarse sin presupuesto.
+
+### Notas de operación
+
+- El Management API `POST /v1/projects/<ref>/database/query` **trunca los cuerpos `$$` multi-línea**
+  (`unterminated dollar-quoted string`): los `create function` hay que enviarlos en una línea.
+- `vercel curl` necesita `$env:VERCEL_TOKEN`; con `--token` el valor se reenvía al curl y falla.
+- `supabase_migrations.schema_migrations` no existe en el proyecto hospedado: las migraciones aplicadas
+  por API no quedan registradas, así que `supabase db push --linked` intentaría reaplicarlas todas.
+
+### Pendiente
+
+- Vercel **Deployment Protection** sigue activa: la app sólo responde vía `vercel curl`. Hay que
+  desactivarla a mano en el dashboard para usarla desde el navegador.
+- El cron real (`0 6 * * *`) aún no ha disparado; los smokes son manuales.
+- Con ~10 s por búsqueda y 45 s de presupuesto, el tick cubre ~2 búsquedas por día en plan Hobby. Con más
+  searches, `p_batch_size` sobra y manda el reparto real por presupuesto.
