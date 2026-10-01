@@ -148,6 +148,13 @@ la *próxima* búsqueda quepa, no sólo el tiempo transcurrido) el tick termina 
 verificación respondieron las dos por `google_flights`, que es lo esperado: los fallbacks sólo arden
 cuando Google degrada, y para entonces el chain puede quedarse sin presupuesto.
 
+### Verificación usándolo de verdad (2026-10-02)
+
+Con la Deployment Protection desactivada, la app se usó desde el navegador (login demo + dashboard) y aparecieron dos bugs que los smokes con `vercel curl` no ven:
+
+- **Bug 6 — precios fabricados.** `runExecution` insertaba una fila de `flight_prices` por cada opción **que tiene el search**, no por cada opción **observada** en la corrida. Las opciones no revisitadas caían en `price_eur: 0` por el `?? 0`, y eso metía observaciones inventadas en el histórico y arrastraba el mínimo diario a 0: la tarjeta de Tendencias mostraba `desde 0.00 EUR` con precios reales de 60–240 EUR en la BD. Ahora sólo se registra el precio que la corrida observó. En la BD hospedada se borraron las 5 filas con 0 y se recalcularon `price_stats_daily` (52 observaciones con min 0 y max 463 → 51 con min real). Test: una opción de una corrida anterior que esta no observa; con el `?? 0` falla, sin él pasa.
+- **Bug 7 — el arranque del navegador no tenía techo (cold start).** El botón **Ejecutar** del dashboard, en la primera invocación tras un deploy, dejó su ejecución en `running` durante toda la invocación de 60 s y luego muerta a medias. En caliente el mismo recorrido tardaba 9,5 s, así que el culpable era el cold start: Playwright sólo acota las llamadas que aceptan `timeout` (`goto`, `waitFor`, `waitForResponse`) y el resto esperaba sin techo — unpack del wireframe de 67 MB, `launch`, `newContext`, `content`, `response.text` y el click del tramo de regreso. `withBudget()` les pone el deadline de la búsqueda y el teardown del contexto lleva 5 s propios (no puede dejar sin persistir un scrape que ya traía sus datos). Verificado tras desplegar `flight-deal-gqyf9x4rg`: en frío **completa** en 31 s con 12 opciones (antes se quedaba colgado), en caliente 9,5 s con 17 y regreso. El reaper recuperó la ejecución muerta (`released: 1`). 106 tests.
+
 ### Notas de operación
 
 - El Management API `POST /v1/projects/<ref>/database/query` **trunca los cuerpos `$$` multi-línea**
@@ -158,8 +165,10 @@ cuando Google degrada, y para entonces el chain puede quedarse sin presupuesto.
 
 ### Pendiente
 
-- Vercel **Deployment Protection** sigue activa: la app sólo responde vía `vercel curl`. Hay que
-  desactivarla a mano en el dashboard para usarla desde el navegador.
 - El cron real (`0 6 * * *`) aún no ha disparado; los smokes son manuales.
+- El **cold start cuesta ~25-30 s**: en frío la fuente completa pero pierde el tramo de regreso
+  (enriquecimiento, nunca puerta). Como el cron de las 06:00 arranca en frío, la primera búsqueda del
+  día irá sin regreso.
 - Con ~10 s por búsqueda y 45 s de presupuesto, el tick cubre ~2 búsquedas por día en plan Hobby. Con más
-  searches, `p_batch_size` sobra y manda el reparto real por presupuesto.
+  searches, `p_batch_size` sobra y manda el reparto real por presupuesto. El siguiente escalón, si el
+  volumen crece, es self-hosted/VPS (sin tope de 60 s) antes que añadir caché.
