@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { CurrencyForm } from "@/components/profile/currency-form";
 import { type Deal as DealType } from "@/components/deals/deal-card";
 import { FeaturedDeals } from "@/components/deals/featured-deals";
 import { SearchHero } from "@/components/search/search-hero";
@@ -14,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import type { FlightLeg } from "@/src/domain/sources/types";
 
 export const dynamic = "force-dynamic";
 
@@ -143,7 +143,7 @@ export default async function DashboardPage() {
     .flatMap((s) => {
       const executedAt = lastExecution.get(s.id)?.finished_at ?? null;
       const baseline = baselineBySearch.get(s.id) ?? null;
-      return (optionsBySearch.get(s.id) ?? []).map(
+      return (optionsBySearch.get(s.id) ?? []).slice(0, 1).map(
         (opt) =>
           ({
             searchId: s.id,
@@ -159,6 +159,7 @@ export default async function DashboardPage() {
             price: Number(opt.price_eur),
             currency: opt.currency,
             airlines: opt.airlines ?? [],
+            legs: (opt.outbound_legs ?? []) as FlightLeg[],
             totalDurationMin: opt.total_duration_min,
             baseline,
             executedAt,
@@ -232,18 +233,6 @@ export default async function DashboardPage() {
                 ))}
               </ul>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Preferencias</CardTitle>
-            <CardDescription>
-              Moneda usada en precios y alertas de tus búsquedas.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CurrencyForm current={profile?.currency ?? "EUR"} />
           </CardContent>
         </Card>
       </section>

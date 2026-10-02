@@ -2,35 +2,22 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { FlightDealCard } from "@/components/deals/flight-deal-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Flame } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { buildBookingUrl } from "@/lib/flight-display";
+import {
+  airlineOptions,
+  applyFilters,
+  parseFilters,
+  type FlightOptionRow,
+} from "@/src/domain/deals/filters";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Resultados | FlightDeal",
-};
-
-type Leg = {
-  airline: string;
-  flightNumber: string;
-  departAirport: string;
-  arriveAirport: string;
-  departAt: string;
-  arriveAt: string;
-  durationMin: number;
-};
-
-type FlightOptionRow = {
-  id: string;
-  price_eur: number;
-  currency: string;
-  outbound_legs: Leg[];
-  inbound_legs: Leg[];
-  airlines: string[];
-  total_duration_min: number | null;
 };
 
 type PriceStatRow = {
@@ -124,37 +111,11 @@ function PriceHistory({
   );
 }
 
-function fmtTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
-}
-
-function fmtDuration(min: number): string {
-  if (!Number.isFinite(min) || min <= 0) return "—";
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${h}h ${String(m).padStart(2, "0")}m`;
-}
-
-function LegList({ legs }: { legs: Leg[] }) {
+/** Prices older than a day may be gone; the search cron runs daily at 06:00. */
+function isStale(finishedAt: string | null): boolean {
   return (
-    <ul className="flex flex-col gap-1.5">
-      {legs.map((leg, i) => (
-        <li key={i} className="flex flex-wrap items-center gap-x-2 text-sm">
-          <span className="font-medium">
-            {leg.airline} {leg.flightNumber}
-          </span>
-          <span>
-            {leg.departAirport} {fmtTime(leg.departAt)}
-          </span>
-          <span className="text-muted-foreground">→</span>
-          <span>
-            {leg.arriveAirport} {fmtTime(leg.arriveAt)}
-          </span>
-          <span className="text-muted-foreground">({fmtDuration(leg.durationMin)})</span>
-        </li>
-      ))}
-    </ul>
+    finishedAt != null &&
+    Date.now() - new Date(finishedAt).getTime() > 24 * 60 * 60 * 1000
   );
 }
 
@@ -209,8 +170,10 @@ function AlertHistory({
 
 export default async function SearchResultsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -221,7 +184,9 @@ export default async function SearchResultsPage({
 
   const { data: search, error: searchError } = await supabase
     .from("searches")
-    .select("id, origin, destination")
+    .select(
+      "id, origin, destination, depart_date, return_date, trip_type, cabin_class, stops, adults",
+    )
     .eq("id", id)
     .single();
   if (searchError || !search) notFound();
@@ -233,15 +198,19 @@ export default async function SearchResultsPage({
     .single();
   const currency = profile?.currency ?? "EUR";
 
-  const { data: execution, error: executionError } = await supabase
+  const { data: execution } = await supabase
     .from("search_executions")
-    .select("id, status, finished_at")
+    .select("id, status, finished_at, error_message")
     .eq("search_id", id)
-    .in("status", ["completed", "degraded"])
     .order("created_at", { ascending: false })
     .limit(1)
-    .single();
-  if (executionError || !execution) notFound();
+    .maybeSingle();
+  const failed = execution?.status === "failed";
+  if (
+    !execution ||
+    (!failed && execution.status !== "completed" && execution.status !== "degraded")
+  )
+    notFound();
 
   const { data: options } = await supabase
     .from("flight_options")
@@ -249,7 +218,27 @@ export default async function SearchResultsPage({
     .eq("execution_id", execution.id)
     .order("price_eur", { ascending: true });
 
-  const rows = (options ?? []) as FlightOptionRow[];
+  const allRows = (options ?? []) as FlightOptionRow[];
+  const filters = parseFilters(await searchParams);
+  const rows = applyFilters(allRows, filters);
+  const bestPrice = allRows.length > 0 ? Number(allRows[0].price_eur) : null;
+  const filtered =
+    filters.maxPrice != null ||
+    filters.maxDuration != null ||
+    filters.nonStopOnly ||
+    filters.airline != null;
+  const airlines = airlineOptions(allRows);
+  const stale = isStale(execution.finished_at);
+  const bookingUrl = buildBookingUrl({
+    origin: search.origin,
+    destination: search.destination,
+    depart_date: search.depart_date,
+    return_date: search.return_date,
+    trip_type: search.trip_type,
+    cabin_class: search.cabin_class,
+    stops: search.stops,
+    adults: search.adults,
+  });
 
   const { data: stats } = await supabase
     .from("price_stats_daily")
@@ -270,89 +259,192 @@ const { data: dispatches } = await supabase
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">
+          <h1 className="text-2xl font-extrabold tracking-tight text-brand-dark">
             {search.origin} → {search.destination}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {rows.length} opciones · completada el{" "}
+            {allRows.length} opciones · búsqueda completada el{" "}
             {execution.finished_at
               ? new Date(execution.finished_at).toLocaleDateString("es-ES")
               : "—"}
+            {` · ${search.adults} pasajero${search.adults > 1 ? "s" : ""} · ${
+              search.cabin_class === "economy" ? "economy" : search.cabin_class
+            }`}
           </p>
         </div>
-        <Button variant="outline" render={<Link href="/dashboard" />}>
-          Volver al dashboard
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" render={<Link href="/dashboard#searches" />}>
+            🔔 Crear alerta
+          </Button>
+          <Button variant="ghost" render={<Link href="/dashboard" />}>
+            Volver
+          </Button>
+        </div>
       </div>
 
-      {rows.length === 0 ? (
+      {stale && !failed && (
+        <p className="rounded-lg bg-opportunity/10 px-3 py-2 text-sm text-opportunity">
+          Estos precios son de hace más de 24 h y pueden haber cambiado. Ejecuta la
+          búsqueda de nuevo para refrescarlos.
+        </p>
+      )}
+
+      {failed ? (
         <Card>
           <CardHeader>
-            <CardTitle>Sin resultados</CardTitle>
+            <CardTitle>No pudimos completar esta búsqueda</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
+            <p>
+              La última ejecución falló
+              {execution.finished_at
+                ? ` el ${new Date(execution.finished_at).toLocaleDateString("es-ES")}`
+                : ""}
+              , así que no hay precios que mostrar. No hemos inventado datos.
+            </p>
+            {execution.error_message && (
+              <p className="rounded-lg bg-muted px-3 py-2 font-mono text-xs">
+                {execution.error_message}
+              </p>
+            )}
+            <p>
+              Vuelve a ejecutarla desde{" "}
+              <Link className="font-semibold text-brand underline" href="/dashboard#searches">
+                Mis búsquedas
+              </Link>
+              . Si el error se repite, revisaremos el scraper.
+            </p>
+          </CardContent>
+        </Card>
+      ) : allRows.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>No hemos encontrado vuelos para esta búsqueda</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              La última ejecución no encontró vuelos para esta búsqueda.
+              Prueba con fechas más flexibles o un destino diferente.
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {rows.map((option) => {
-            const isBestPrice = option.price_eur === rows[0]?.price_eur;
-            return (
-              <Card
-                key={option.id}
-                className={isBestPrice ? "ring-2 ring-opportunity/40" : undefined}
-              >
-                <CardHeader>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <CardTitle className="text-base font-extrabold text-brand-dark">
-                      {option.airlines.join(", ")}
-                      {option.outbound_legs[0]?.flightNumber && (
-                        <span className="ml-1 font-normal text-muted-foreground">
-                          {option.outbound_legs[0].flightNumber}
-                        </span>
-                      )}
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
-                      {isBestPrice && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-opportunity/10 px-2 py-0.5 text-xs font-bold text-opportunity">
-                          <Flame className="size-3.5" aria-hidden />
-                          Mejor precio
-                        </span>
-                      )}
-                      <span className="text-lg font-extrabold tabular-nums text-ink">
-                        {option.price_eur.toFixed(2)}{" "}
-                        <span className="text-sm">{option.currency}</span>
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {[option.outbound_legs[0]?.departAirport, option.outbound_legs[0]?.arriveAirport]
-                      .filter(Boolean)
-                      .join(" → ")}
-                    {option.total_duration_min
-                      ? ` · ${fmtDuration(option.total_duration_min)}`
-                      : ""}
-                  </p>
-                </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
-                    <LegList legs={option.outbound_legs} />
-                    {option.inbound_legs.length > 0 && (
-                      <>
-                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Regreso
-                        </span>
-                        <LegList legs={option.inbound_legs} />
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-            );
-          })}
+        <div className="grid gap-6 lg:grid-cols-[1fr_240px]">
+          <div className="flex flex-col gap-4">
+            {rows.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  Ninguna opción cumple los filtros.{" "}
+                  <Link
+                    className="font-semibold text-brand underline"
+                    href={`/searches/${id}`}
+                  >
+                    Quitar filtros
+                  </Link>
+                </CardContent>
+              </Card>
+            ) : (
+              rows.map((option) => (
+                <FlightDealCard
+                  key={option.id}
+                  deal={{
+                    id: option.id,
+                    price: Number(option.price_eur),
+                    currency: option.currency,
+                    outboundLegs: option.outbound_legs,
+                    inboundLegs: option.inbound_legs,
+                    bookingUrl,
+                  }}
+                  isBestPrice={Number(option.price_eur) === bestPrice}
+                />
+              ))
+            )}
+          </div>
+
+          <aside className="lg:sticky lg:top-20 lg:self-start">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Filtrar resultados</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form className="flex flex-col gap-3">
+                  <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                    Precio máximo ({currency})
+                    <input
+                      className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                      defaultValue={filters.maxPrice ?? ""}
+                      min={0}
+                      name="precio"
+                      placeholder="sin límite"
+                      step="0.01"
+                      type="number"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                    Duración máxima (min)
+                    <input
+                      className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                      defaultValue={filters.maxDuration ?? ""}
+                      min={0}
+                      name="dur"
+                      placeholder="sin límite"
+                      type="number"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input name="directo" type="checkbox" value="1" defaultChecked={filters.nonStopOnly} />
+                    Solo directos
+                  </label>
+                  {airlines.length > 1 && (
+                    <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                      Aerolínea
+                      <select
+                        className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                        defaultValue={filters.airline ?? ""}
+                        name="aerolinea"
+                      >
+                        <option value="">Todas</option>
+                        {airlines.map((a) => (
+                          <option key={a} value={a}>
+                            {a}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                    Ordenar por
+                    <select
+                      className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                      defaultValue={filters.sort}
+                      name="ord"
+                    >
+                      <option value="price">Precio</option>
+                      <option value="duration">Duración</option>
+                      <option value="stops">Escalas</option>
+                    </select>
+                  </label>
+                  <Button size="sm" type="submit">
+                    Aplicar
+                  </Button>
+                  {filtered && (
+                    <Link
+                      className="text-center text-xs text-muted-foreground underline"
+                      href={`/searches/${id}`}
+                    >
+                      Quitar filtros
+                    </Link>
+                  )}
+                  {rows.length !== allRows.length && (
+                    <p className="text-xs text-muted-foreground">
+                      {rows.length} de {allRows.length} opciones
+                    </p>
+                  )}
+                </form>
+              </CardContent>
+            </Card>
+          </aside>
         </div>
       )}
 

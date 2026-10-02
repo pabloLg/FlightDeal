@@ -5,12 +5,12 @@ import type { FlightSearchParams, FlightOption, FlightLeg } from "./types";
 // That script carries the search results: the [2][0] entry is the featured
 // "best options" block and [3][0] the full list of outbound options. Each option
 // is [detail, [priceInfo, token], ...]:
-//   detail[0]       airline code            detail[0][1] airline name
+//   detail[0]       airline code (a plain string: detail[0][1] is its 2nd char)
 //   detail[2]       flight legs (one per segment)
 //     leg[3]        departure airport code  leg[6] arrival airport code
 //     leg[8]        [depH, depM]            leg[10] [arrH, arrM]
 //     leg[11]       duration minutes        leg[20] [y,m,d] dep date
-//     leg[21]       [y,m,d] arr date        leg[22] [airline, flightNumber, , name]
+//     leg[21]       [y,m,d] arr date        leg[22] [airline, flightNumber, , fullName]
 //   option[1]       [ [null, price], bookingToken ]
 //
 // Note: Google's "featured outbound" view lists one-way legs with the total
@@ -19,6 +19,7 @@ import type { FlightSearchParams, FlightOption, FlightLeg } from "./types";
 
 export interface RawFlightLeg {
   airline: string;
+  airlineName?: string;
   flightNumber: string;
   departAirport: string;
   arriveAirport: string;
@@ -102,6 +103,8 @@ export function parseLeg(leg: unknown): RawFlightLeg | null {
   }
   return {
     airline: typeof flightInfo?.[0] === "string" ? (flightInfo[0] as string) : "",
+    airlineName:
+      typeof flightInfo?.[3] === "string" ? (flightInfo[3] as string) : undefined,
     flightNumber:
       typeof flightInfo?.[1] === "string" ? (flightInfo[1] as string) : "",
     departAirport,

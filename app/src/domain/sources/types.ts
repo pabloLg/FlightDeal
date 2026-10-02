@@ -18,6 +18,8 @@ export interface FlightSearchParams {
 
 export interface FlightLeg {
   airline: string;
+  /** Full carrier name when the source exposes it (Google leg[22][3]). */
+  airlineName?: string;
   flightNumber: string;
   departAirport: string;
   arriveAirport: string;

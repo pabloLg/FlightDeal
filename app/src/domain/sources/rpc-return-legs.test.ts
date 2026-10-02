@@ -18,6 +18,7 @@ describe("parseReturnLegs", () => {
     expect(payload?.selectedOutbound).toEqual([
       {
         airline: "UX",
+        airlineName: "Air Europa",
         flightNumber: "7703",
         departAirport: "MAD",
         arriveAirport: "BCN",

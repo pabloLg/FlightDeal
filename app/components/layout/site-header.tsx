@@ -15,7 +15,7 @@ export async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-brand/10 bg-white/70 backdrop-blur-md">
-      <div className="mx-auto flex h-18 max-w-[1420px] items-center justify-between gap-4 px-6">
+      <div className="mx-auto flex min-h-18 max-w-[1420px] flex-wrap items-center justify-between gap-x-4 gap-y-1 px-6 py-2 md:py-0">
         <Link
           href={user ? "/dashboard" : "/"}
           className="flex items-center gap-2.5 font-extrabold tracking-tight text-brand-dark"
