@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { signOut } from "@/app/actions/auth";
-import { SearchesView } from "@/components/search/searches-view";
 import { CurrencyForm } from "@/components/profile/currency-form";
-import { Button } from "@/components/ui/button";
+import { type Deal as DealType } from "@/components/deals/deal-card";
+import { FeaturedDeals } from "@/components/deals/featured-deals";
+import { SearchHero } from "@/components/search/search-hero";
+import { SearchesView } from "@/components/search/searches-view";
 import {
   Card,
   CardContent,
@@ -17,7 +18,34 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Dashboard | Flight Deal Tracker",
+  title: "Descubrir | FlightDeal",
+};
+
+type ExecutionRow = {
+  search_id: string;
+  id: string;
+  status: string;
+  finished_at: string | null;
+  created_at: string;
+};
+
+type FlightOptionRow = {
+  id: string;
+  search_id: string;
+  execution_id: string;
+  price_eur: number;
+  currency: string;
+  airlines: string[] | null;
+  total_duration_min: number | null;
+  outbound_legs: unknown;
+  inbound_legs: unknown;
+};
+
+type StatRow = {
+  search_id: string;
+  stats_date: string;
+  min_price_eur: number | null;
+  avg_price_eur: number | null;
 };
 
 export default async function DashboardPage() {
@@ -38,15 +66,8 @@ export default async function DashboardPage() {
 
   const searchIds = (searches ?? []).map((s) => s.id);
 
-  type ExecutionRow = {
-    search_id: string;
-    id: string;
-    status: string;
-    finished_at: string | null;
-    created_at: string;
-  };
-
   const lastExecution = new Map<string, ExecutionRow>();
+  const resultsExecution = new Map<string, string>();
   if (searchIds.length > 0) {
     const { data: executions } = await supabase
       .from("search_executions")
@@ -56,8 +77,91 @@ export default async function DashboardPage() {
     for (const exec of (executions ?? []) as ExecutionRow[]) {
       if (!lastExecution.has(exec.search_id))
         lastExecution.set(exec.search_id, exec);
+      if (
+        !resultsExecution.has(exec.search_id) &&
+        (exec.status === "completed" || exec.status === "degraded")
+      ) {
+        resultsExecution.set(exec.search_id, exec.id);
+      }
     }
   }
+
+  const bestBySearch = new Map<string, FlightOptionRow>();
+  if (resultsExecution.size > 0) {
+    const { data: options } = await supabase
+      .from("flight_options")
+      .select(
+        "id, search_id, execution_id, price_eur, currency, airlines, total_duration_min, outbound_legs, inbound_legs",
+      )
+      .in("execution_id", [...resultsExecution.values()])
+      .order("price_eur", { ascending: true });
+    for (const opt of (options ?? []) as FlightOptionRow[]) {
+      if (!bestBySearch.has(opt.search_id)) bestBySearch.set(opt.search_id, opt);
+    }
+  }
+
+  const baselineBySearch = new Map<string, number>();
+  const trendBySearch = new Map<string, number>();
+  if (searchIds.length > 0) {
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const { data: stats } = await supabase
+      .from("price_stats_daily")
+      .select("search_id, stats_date, min_price_eur, avg_price_eur")
+      .in("search_id", searchIds)
+      .gte("stats_date", since.toISOString().slice(0, 10));
+
+    const avgAcc = new Map<string, { sum: number; n: number }>();
+    for (const s of (stats ?? []) as StatRow[]) {
+      if (s.avg_price_eur != null) {
+        const acc = avgAcc.get(s.search_id) ?? { sum: 0, n: 0 };
+        acc.sum += Number(s.avg_price_eur);
+        acc.n += 1;
+        avgAcc.set(s.search_id, acc);
+      }
+      if (s.min_price_eur != null && s.stats_date >= weekAgo.toISOString().slice(0, 10)) {
+        const prev = trendBySearch.get(s.search_id);
+        if (prev === undefined || Number(s.min_price_eur) < prev)
+          trendBySearch.set(s.search_id, Number(s.min_price_eur));
+      }
+    }
+    for (const [id, acc] of avgAcc) {
+      baselineBySearch.set(id, acc.sum / acc.n);
+    }
+  }
+
+  const deals: DealType[] = (searches ?? [])
+    .flatMap((s) => {
+      const opt = bestBySearch.get(s.id);
+      if (!opt) return [];
+      return [
+        {
+          searchId: s.id,
+          origin: s.origin,
+          destination: s.destination,
+          departDate: s.depart_date,
+          returnDate: s.return_date,
+          tripType: s.trip_type,
+          cabinClass: s.cabin_class,
+          stops: s.stops,
+          adults: s.adults,
+          price: Number(opt.price_eur),
+          currency: opt.currency,
+          airlines: opt.airlines ?? [],
+          totalDurationMin: opt.total_duration_min,
+          baseline: baselineBySearch.get(s.id) ?? null,
+          executedAt: lastExecution.get(s.id)?.finished_at ?? null,
+        } satisfies DealType,
+      ];
+    })
+    .sort((a, b) => a.price - b.price);
+
+  const trendRows = (searches ?? [])
+    .filter((s) => trendBySearch.has(s.id))
+    .map((s) => ({ search: s, min: trendBySearch.get(s.id) as number }))
+    .sort((a, b) => a.min - b.min);
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -65,55 +169,31 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
-  type DailyStat = { search_id: string; stats_date: string; min_price_eur: number | null };
-  const trends = new Map<string, number>();
-  if (searchIds.length > 0) {
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const { data: stats } = await supabase
-      .from("price_stats_daily")
-      .select("search_id, stats_date, min_price_eur")
-      .in("search_id", searchIds)
-      .gte("stats_date", weekAgo.toISOString().slice(0, 10));
-    for (const s of (stats ?? []) as DailyStat[]) {
-      if (s.min_price_eur === null) continue;
-      const prev = trends.get(s.search_id);
-      if (prev === undefined || s.min_price_eur < prev)
-        trends.set(s.search_id, Number(s.min_price_eur));
-    }
-  }
-
-  const trendRows = (searches ?? [])
-    .filter((s) => trends.has(s.id))
-    .map((s) => ({ search: s, min: trends.get(s.id) as number }))
-    .sort((a, b) => a.min - b.min);
-
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Hola, {user.email}</p>
-        </div>
-        <form action={signOut}>
-          <Button type="submit" variant="outline">
-            Cerrar sesión
-          </Button>
-        </form>
-      </div>
+    <main className="mx-auto flex w-full max-w-[1420px] flex-col gap-8 px-6 pb-16">
+      <SearchHero />
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Preferencias</CardTitle>
-            <CardDescription>
-              Moneda usada en precios y alertas de tus búsquedas.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CurrencyForm current={profile?.currency ?? "EUR"} />
-          </CardContent>
-        </Card>
+      <FeaturedDeals deals={deals} />
+
+      <section id="searches" className="scroll-mt-24">
+        <div className="mb-3.5">
+          <h2 className="text-xl font-bold tracking-tight text-brand-dark">
+            Mis búsquedas
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Tus rutas monitorizadas.
+          </p>
+        </div>
+        <SearchesView
+          searches={(searches ?? []).map((s) => ({
+            ...s,
+            lastExecution: lastExecution.get(s.id) ?? null,
+            bestPrice: bestBySearch.get(s.id)?.price_eur ?? null,
+          }))}
+        />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle>Tendencias (últimos 7 días)</CardTitle>
@@ -133,7 +213,7 @@ export default async function DashboardPage() {
                     key={search.id}
                     className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
                   >
-                    <span className="font-medium">
+                    <span className="font-medium text-brand-dark">
                       {search.origin} → {search.destination}
                     </span>
                     <span className="text-muted-foreground">
@@ -145,14 +225,19 @@ export default async function DashboardPage() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      <SearchesView
-        searches={(searches ?? []).map((s) => ({
-          ...s,
-          lastExecution: lastExecution.get(s.id) ?? null,
-        }))}
-      />
+        <Card>
+          <CardHeader>
+            <CardTitle>Preferencias</CardTitle>
+            <CardDescription>
+              Moneda usada en precios y alertas de tus búsquedas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CurrencyForm current={profile?.currency ?? "EUR"} />
+          </CardContent>
+        </Card>
+      </section>
     </main>
   );
 }

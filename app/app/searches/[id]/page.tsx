@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Flame } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -59,9 +60,25 @@ function PriceHistory({
   currency: string;
 }) {
   const max = Math.max(...stats.map((s) => s.max_price_eur));
+  const hasHistory = stats.length > 0 && stats.some((s) => s.observations > 0);
 
   return (
     <div className="flex flex-col gap-2">
+      {hasHistory && (
+        <div className="flex items-center justify-between gap-2 text-sm mb-2">
+          <span>
+            <span className="font-medium">Precio actual:</span> {stats[stats.length - 1].min_price_eur.toFixed(2)} {currency}
+          </span>
+          {stats.length > 1 && stats[stats.length - 1].observations > 0 && (
+            <span className="ml-2 text-opportunity">
+              −{Math.round(
+                (1 - stats[stats.length - 1].min_price_eur / stats[0].avg_price_eur) * 100
+              )}% frente al habitual
+            </span>
+          )}
+        </div>
+      )}
+
       {stats.map((s) => {
         const barH = Math.max(6, Math.round((s.min_price_eur / max) * 100));
         return (
@@ -85,6 +102,12 @@ function PriceHistory({
           </div>
         );
       })}
+      {!hasHistory && (
+        <p className="text-xs text-muted-foreground">
+          Aún no hay datos históricos. Los agregados diarios (mínimo, máximo y media)
+          aparecerán tras las próximas ejecuciones de esta búsqueda.
+        </p>
+      )}
     </div>
   );
 }
@@ -265,36 +288,52 @@ const dispatchRows = (dispatches ?? []) as DispatchRow[];
         </Card>
       ) : (
         <div className="grid gap-4">
-          {rows.map((option) => (
-            <Card key={option.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle>
-                    {option.airlines.join(", ")}
-                    <span className="ml-2 text-muted-foreground">
-                      {option.total_duration_min
-                        ? fmtDuration(option.total_duration_min)
-                        : ""}
-                    </span>
-                  </CardTitle>
-                  <span className="text-lg font-semibold tabular-nums">
-                    {option.price_eur.toFixed(2)} {option.currency}
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <LegList legs={option.outbound_legs} />
-                {option.inbound_legs.length > 0 && (
-                  <>
-                    <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                      Regreso
-                    </span>
-                    <LegList legs={option.inbound_legs} />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+          {rows.map((option) => {
+            const isBestPrice = option.price_eur === rows[0]?.price_eur;
+            return (
+              <Card key={option.id} className={isBestPrice ? "border-b border-opacity-100 pb-2" : ""}>
+                <CardHeader>
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle>
+                      {option.airlines.join(", ")}
+                      <div className="text-xs uppercase text-opportunity">
+                        {option.outbound_legs[0]?.airline && (
+                          <span>
+                            {option.outbound_legs[0].airline}
+                            {option.outbound_legs[0]?.flightNumber && ` ${option.outbound_legs[0].flightNumber}`}
+                          </span>
+                        )}
+                      </div>
+                      <span className="ml-2 text-muted-foreground">
+                        {option.total_duration_min
+                          ? fmtDuration(option.total_duration_min)
+                          : ""}
+                        </span>
+                      </CardTitle>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-semibold tabular-nums">
+                          {option.price_eur.toFixed(2)} {option.currency}
+                        </span>
+                        {isBestPrice && (
+                          <span className="ml-2 text-opportunity font-bold">🏆 Mejor precio</span>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-4">
+                    <LegList legs={option.outbound_legs} />
+                    {option.inbound_legs.length > 0 && (
+                      <>
+                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Regreso
+                        </span>
+                        <LegList legs={option.inbound_legs} />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+            );
+          })}
         </div>
       )}
 

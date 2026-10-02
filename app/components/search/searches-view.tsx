@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import {
-  createSearch,
   deleteSearch,
   toggleSearch,
   updateSearch,
@@ -66,7 +65,10 @@ function statusLabel(status: string): string {
 export function SearchesView({
   searches,
 }: {
-  searches: (SearchRow & { lastExecution: ExecutionRow | null })[];
+  searches: (SearchRow & {
+    lastExecution: ExecutionRow | null;
+    bestPrice: number | null;
+  })[];
 }) {
   const router = useRouter();
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -119,17 +121,11 @@ export function SearchesView({
   };
 
   if (searches.length === 0) {
-    return (
-      <div className="flex flex-col gap-4">
-        <EmptyState />
-        <CreateSearchCard />
-      </div>
-    );
+    return <EmptyState />;
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <CreateSearchCard />
+    <div className="flex flex-col gap-4">
       {error && (
         <p className="text-sm text-destructive" role="alert">
           {error}
@@ -139,26 +135,45 @@ export function SearchesView({
         {searches.map((search) => (
           <Card key={search.id} size="sm">
             <CardHeader>
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle>
-                  {search.origin} → {search.destination}
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  {runningId === search.id && (
-                    <span className="text-sm text-muted-foreground">
-                      {statusLabel(pollStatus[search.id] ?? "running")}
-                    </span>
-                  )}
-                  {search.lastExecution && runningId !== search.id && (
-                    <span className="text-sm text-muted-foreground">
-                      {statusLabel(search.lastExecution.status)}
-                    </span>
-                  )}
-                  {!search.lastExecution && runningId !== search.id && (
-                    <span className="text-sm text-muted-foreground">Sin ejecutar</span>
-                  )}
+<div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-base font-extrabold text-brand-dark">
+                    {search.origin} → {search.destination}
+                  </CardTitle>
+                  <div className="flex items-center gap-3">
+                    {search.bestPrice != null && (
+                      <span className="text-sm font-semibold text-brand-dark">
+                        Desde {search.bestPrice.toFixed(2)} EUR
+                      </span>
+                    )}
+                    {runningId === search.id && (
+                      <span className="text-sm text-muted-foreground">
+                        {statusLabel(pollStatus[search.id] ?? "running")}
+                      </span>
+                    )}
+                    {search.lastExecution && runningId !== search.id && (
+                      <span className="text-sm text-muted-foreground">
+                        {statusLabel(search.lastExecution.status)}
+                      </span>
+                    )}
+                    {!search.lastExecution && runningId !== search.id && (
+                      <span className="text-sm text-muted-foreground">Sin ejecutar</span>
+                    )}
+                    {/* Alert display */}
+                    {search.alert_threshold_eur != null && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-opportunity">
+                        <span>
+                          🔔 Avisarme cuando sea inferior a {search.alert_threshold_eur.toFixed(0)} €
+                        </span>
+                        {search.bestPrice != null && search.bestPrice <= search.alert_threshold_eur && (
+                          <span className="font-medium">⚠️ Activa</span>
+                        )}
+                        {search.bestPrice != null && search.bestPrice > search.alert_threshold_eur && (
+                          <span>—</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
               <CardDescription>
                 {[search.depart_date, search.return_date].filter(Boolean).join(" → ") || "Fechas flexibles"}{" "}
                 · {search.trip_type === "one_way" ? "solo ida" : "ida y vuelta"} ·{" "}
@@ -246,87 +261,6 @@ function EmptyState() {
 }
 
 const emptyState: SearchFormState = {};
-
-function CreateSearchCard() {
-  const [state, formAction, pending] = useActionState(createSearch, emptyState);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Nueva búsqueda</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form action={formAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="origin">Origen</Label>
-            <Input id="origin" name="origin" placeholder="MAD" required />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="destination">Destino</Label>
-            <Input id="destination" name="destination" placeholder="BCN" required />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="depart_date">Salida</Label>
-            <Input id="depart_date" name="depart_date" type="date" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="return_date">Regreso</Label>
-            <Input id="return_date" name="return_date" type="date" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="trip_type">Tipo</Label>
-            <select
-              id="trip_type"
-              name="trip_type"
-              className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-              defaultValue="round_trip"
-            >
-              <option value="round_trip">Ida y vuelta</option>
-              <option value="one_way">Solo ida</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="adults">Pasajeros</Label>
-            <Input id="adults" name="adults" type="number" min={1} max={9} defaultValue={1} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="alert_threshold_eur">Umbral de alerta (EUR)</Label>
-            <Input
-              id="alert_threshold_eur"
-              name="alert_threshold_eur"
-              type="number"
-              min={0}
-              step="0.01"
-              placeholder="Opcional"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="date_flex_days">Flexibilidad (± días)</Label>
-            <Input
-              id="date_flex_days"
-              name="date_flex_days"
-              type="number"
-              min={0}
-              max={21}
-              defaultValue={0}
-              placeholder="0 = fechas exactas"
-            />
-          </div>
-          <div className="flex flex-col justify-end">
-            <Button type="submit" disabled={pending}>
-              {pending ? "Creando…" : "Crear búsqueda"}
-            </Button>
-          </div>
-          {state?.error && (
-            <p className="text-sm text-destructive sm:col-span-2 lg:col-span-4" role="alert">
-              {state.error}
-            </p>
-          )}
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
 
 type SearchWithExecution = SearchRow & { lastExecution: ExecutionRow | null };
 
