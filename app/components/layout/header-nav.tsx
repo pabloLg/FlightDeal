@@ -11,7 +11,7 @@ const LINKS = [
     label: "Mis búsquedas",
     match: () => false,
   },
-  { href: "/alerts", label: "Alertas", match: (p: string) => p.startsWith("/alerts") },
+  
 ];
 
 export function HeaderNav() {

@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Resultados | Flight Deal Tracker",
+  title: "Resultados | FlightDeal",
 };
 
 type Leg = {
@@ -55,34 +55,46 @@ type DispatchRow = {
 function PriceHistory({
   stats,
   currency,
+  currentPrice,
 }: {
   stats: PriceStatRow[];
   currency: string;
+  currentPrice: number | null;
 }) {
   const max = Math.max(...stats.map((s) => s.max_price_eur));
-  const hasHistory = stats.length > 0 && stats.some((s) => s.observations > 0);
+  const hasHistory = stats.some((s) => s.observations > 0);
+  const habitual =
+    stats.reduce((acc, s) => acc + s.avg_price_eur, 0) / (stats.length || 1);
+  const diff =
+    currentPrice != null && habitual > 0
+      ? Math.round((1 - currentPrice / habitual) * 100)
+      : null;
 
   return (
     <div className="flex flex-col gap-2">
-      {hasHistory && (
-        <div className="flex items-center justify-between gap-2 text-sm mb-2">
+      {currentPrice != null && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
           <span>
-            <span className="font-medium">Precio actual:</span> {stats[stats.length - 1].min_price_eur.toFixed(2)} {currency}
+            <span className="font-medium">Precio actual:</span>{" "}
+            {currentPrice.toFixed(2)} {currency}
           </span>
-          {stats.length > 1 && stats[stats.length - 1].observations > 0 && (
-            <span className="ml-2 text-opportunity">
-              −{Math.round(
-                (1 - stats[stats.length - 1].min_price_eur / stats[0].avg_price_eur) * 100
-              )}% frente al habitual
-            </span>
-          )}
+          {diff != null &&
+            (diff >= 0 ? (
+              <span className="font-semibold text-savings">
+                −{diff}% frente al habitual
+              </span>
+            ) : (
+              <span className="font-semibold text-opportunity">
+                +{Math.abs(diff)}% frente al habitual
+              </span>
+            ))}
         </div>
       )}
 
       {stats.map((s) => {
         const barH = Math.max(6, Math.round((s.min_price_eur / max) * 100));
         return (
-          <div key={s.stats_date} className="flex items-center gap-3 text-sm">
+          <div key={s.stats_date} className="flex flex-wrap items-center gap-3 text-sm">
             <span className="w-24 shrink-0">
               {new Date(s.stats_date).toLocaleDateString("es-ES")}
             </span>
@@ -248,13 +260,13 @@ export default async function SearchResultsPage({
   const statsRows = (stats ?? []) as PriceStatRow[];
 
 const { data: dispatches } = await supabase
-  .from("alert_dispatches")
-  .select(
-    "id, price_eur, status, dispatched_at, alerts_edge(threshold_eur, provider)",
-  )
-  .order("dispatched_at", { ascending: false });
+    .from("alert_dispatches")
+    .select(
+      "id, price_eur, status, dispatched_at, alerts_edge(threshold_eur, provider)",
+    )
+    .order("dispatched_at", { ascending: false });
 
-const dispatchRows = (dispatches ?? []) as DispatchRow[];
+  const dispatchRows = (dispatches ?? []) as DispatchRow[];
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
@@ -291,35 +303,42 @@ const dispatchRows = (dispatches ?? []) as DispatchRow[];
           {rows.map((option) => {
             const isBestPrice = option.price_eur === rows[0]?.price_eur;
             return (
-              <Card key={option.id} className={isBestPrice ? "border-b border-opacity-100 pb-2" : ""}>
+              <Card
+                key={option.id}
+                className={isBestPrice ? "ring-2 ring-opportunity/40" : undefined}
+              >
                 <CardHeader>
-                  <div className="flex items-center justify-between gap-2">
-                    <CardTitle>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="text-base font-extrabold text-brand-dark">
                       {option.airlines.join(", ")}
-                      <div className="text-xs uppercase text-opportunity">
-                        {option.outbound_legs[0]?.airline && (
-                          <span>
-                            {option.outbound_legs[0].airline}
-                            {option.outbound_legs[0]?.flightNumber && ` ${option.outbound_legs[0].flightNumber}`}
-                          </span>
-                        )}
-                      </div>
-                      <span className="ml-2 text-muted-foreground">
-                        {option.total_duration_min
-                          ? fmtDuration(option.total_duration_min)
-                          : ""}
+                      {option.outbound_legs[0]?.flightNumber && (
+                        <span className="ml-1 font-normal text-muted-foreground">
+                          {option.outbound_legs[0].flightNumber}
                         </span>
-                      </CardTitle>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-semibold tabular-nums">
-                          {option.price_eur.toFixed(2)} {option.currency}
+                      )}
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      {isBestPrice && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-opportunity/10 px-2 py-0.5 text-xs font-bold text-opportunity">
+                          <Flame className="size-3.5" aria-hidden />
+                          Mejor precio
                         </span>
-                        {isBestPrice && (
-                          <span className="ml-2 text-opportunity font-bold">🏆 Mejor precio</span>
-                        )}
-                      </div>
+                      )}
+                      <span className="text-lg font-extrabold tabular-nums text-ink">
+                        {option.price_eur.toFixed(2)}{" "}
+                        <span className="text-sm">{option.currency}</span>
+                      </span>
                     </div>
-                  </CardHeader>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {[option.outbound_legs[0]?.departAirport, option.outbound_legs[0]?.arriveAirport]
+                      .filter(Boolean)
+                      .join(" → ")}
+                    {option.total_duration_min
+                      ? ` · ${fmtDuration(option.total_duration_min)}`
+                      : ""}
+                  </p>
+                </CardHeader>
                   <CardContent className="flex flex-col gap-4">
                     <LegList legs={option.outbound_legs} />
                     {option.inbound_legs.length > 0 && (
@@ -348,7 +367,11 @@ const dispatchRows = (dispatches ?? []) as DispatchRow[];
               y media) aparecerán tras las próximas ejecuciones de esta búsqueda.
             </p>
           ) : (
-            <PriceHistory stats={statsRows} currency={currency} />
+            <PriceHistory
+              stats={statsRows}
+              currency={currency}
+              currentPrice={rows[0]?.price_eur ?? null}
+            />
           )}
         </CardContent>
       </Card>

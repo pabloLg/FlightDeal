@@ -23,7 +23,7 @@ export function LoginForm() {
       <CardHeader>
         <CardTitle>Iniciar sesión</CardTitle>
         <CardDescription>
-          Accede a tu cuenta de Flight Deal Tracker.
+          Accede a tu cuenta de FlightDeal.
         </CardDescription>
       </CardHeader>
       <CardContent>

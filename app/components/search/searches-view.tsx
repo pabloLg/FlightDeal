@@ -12,14 +12,8 @@ import {
   type SearchFormState,
 } from "@/app/actions/search";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Bell, Info, Plane } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -60,6 +54,31 @@ function statusLabel(status: string): string {
     default:
       return status;
   }
+}
+
+const DEGRADED_HELP =
+  "Búsqueda degradada: una o más fuentes de precios fallaron, así que puede faltar algún resultado. Los precios que ves son los que sí se pudieron observar.";
+
+function StatusPill({ status }: { status: string }) {
+  const degraded = status === "degraded";
+  return (
+    <span
+      title={degraded ? DEGRADED_HELP : undefined}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${
+        degraded
+          ? "cursor-help bg-opportunity/10 text-opportunity"
+          : status === "failed"
+            ? "bg-destructive/10 text-destructive"
+            : "bg-savings/10 text-savings"
+      }`}
+    >
+      <span className="size-1.5 rounded-full bg-current" aria-hidden />
+      {statusLabel(status)}
+      {degraded && (
+        <Info className="size-3.5" aria-label={DEGRADED_HELP} />
+      )}
+    </span>
+  );
 }
 
 export function SearchesView({
@@ -132,116 +151,139 @@ export function SearchesView({
         </p>
       )}
       <div className="grid gap-4">
-        {searches.map((search) => (
-          <Card key={search.id} size="sm">
-            <CardHeader>
-<div className="flex items-center justify-between gap-2">
-                  <CardTitle className="text-base font-extrabold text-brand-dark">
+        {searches.map((search) => {
+          const liveStatus =
+            runningId === search.id
+              ? (pollStatus[search.id] ?? "running")
+              : (search.lastExecution?.status ?? null);
+          const threshold = search.alert_threshold_eur;
+          const reached =
+            threshold != null && search.bestPrice != null && search.bestPrice <= threshold;
+
+          return (
+            <Card key={search.id} size="sm">
+              <div className="grid items-center gap-4 px-4 py-4 sm:grid-cols-[1.5fr_1.1fr_auto]">
+                <div>
+                  <div className="text-base font-extrabold text-brand-dark">
                     {search.origin} → {search.destination}
-                  </CardTitle>
-                  <div className="flex items-center gap-3">
-                    {search.bestPrice != null && (
-                      <span className="text-sm font-semibold text-brand-dark">
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {[
+                      search.depart_date,
+                      search.return_date,
+                    ].filter(Boolean).join(" → ") || "Fechas flexibles"}{" "}
+                    · {search.trip_type === "one_way" ? "solo ida" : "ida y vuelta"} ·{" "}
+                    {search.cabin_class} · {search.adults} pax ·{" "}
+                    {search.stops === "non_stop" ? "sin escalas" : "cualquier escala"}
+                    {search.date_flex_days > 0 &&
+                      ` · ±${search.date_flex_days} días flexibles`}
+                  </div>
+                  {threshold != null && (
+                    <p className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-full bg-sky px-2.5 py-1 text-xs text-brand-dark">
+                      <Bell className="size-3.5" aria-hidden />
+                      Avisarme por debajo de {threshold.toFixed(0)} €
+                      {reached && (
+                        <span className="font-bold text-savings">
+                          · precio alcanzado
+                        </span>
+                      )}
+                      {!search.enabled && (
+                        <span className="text-muted-foreground">
+                          · alerta en pausa
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col items-start gap-1.5 sm:items-start">
+                  {search.bestPrice != null ? (
+                    <>
+                      <span className="text-sm font-extrabold text-brand-dark">
                         Desde {search.bestPrice.toFixed(2)} EUR
                       </span>
-                    )}
-                    {runningId === search.id && (
-                      <span className="text-sm text-muted-foreground">
-                        {statusLabel(pollStatus[search.id] ?? "running")}
+                      <span className="text-xs text-muted-foreground">
+                        Mejor precio observado
                       </span>
-                    )}
-                    {search.lastExecution && runningId !== search.id && (
-                      <span className="text-sm text-muted-foreground">
-                        {statusLabel(search.lastExecution.status)}
-                      </span>
-                    )}
-                    {!search.lastExecution && runningId !== search.id && (
-                      <span className="text-sm text-muted-foreground">Sin ejecutar</span>
-                    )}
-                    {/* Alert display */}
-                    {search.alert_threshold_eur != null && (
-                      <div className="mt-2 flex items-center gap-2 text-xs text-opportunity">
-                        <span>
-                          🔔 Avisarme cuando sea inferior a {search.alert_threshold_eur.toFixed(0)} €
-                        </span>
-                        {search.bestPrice != null && search.bestPrice <= search.alert_threshold_eur && (
-                          <span className="font-medium">⚠️ Activa</span>
-                        )}
-                        {search.bestPrice != null && search.bestPrice > search.alert_threshold_eur && (
-                          <span>—</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                    </>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      Todavía sin precios
+                    </span>
+                  )}
+                  {liveStatus ? (
+                    <StatusPill status={liveStatus} />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      Sin ejecutar
+                    </span>
+                  )}
+                  {!search.enabled && (
+                    <span className="text-xs text-muted-foreground">
+                      Búsqueda desactivada
+                    </span>
+                  )}
                 </div>
-              <CardDescription>
-                {[search.depart_date, search.return_date].filter(Boolean).join(" → ") || "Fechas flexibles"}{" "}
-                · {search.trip_type === "one_way" ? "solo ida" : "ida y vuelta"} ·{" "}
-                {search.cabin_class} · {search.adults} pax ·{" "}
-                {search.stops === "non_stop" ? "sin escalas" : "cualquier escala"}
-                {search.date_flex_days > 0 &&
-                  ` · ±${search.date_flex_days} días flexibles`}
-              </CardDescription>
-              {!search.enabled && (
-                <CardDescription>Desactivada</CardDescription>
-              )}
-            </CardHeader>
-            {editingId === search.id && (
-              <CardContent>
-                <EditSearchForm
-                  search={search}
-                  onDone={() => {
-                    setEditingId(null);
-                    router.refresh();
-                  }}
-                />
-              </CardContent>
-            )}
-            <CardAction>
-              <div className="flex items-center gap-2">
-                {search.lastExecution && (
+
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  {search.lastExecution && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      render={<Link href={`/searches/${search.id}`} />}
+                    >
+                      Ver resultados
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
-                    render={<Link href={`/searches/${search.id}`} />}
+                    disabled={runningId !== null}
+                    onClick={() =>
+                      setEditingId(editingId === search.id ? null : search.id)
+                    }
                   >
-                    Ver resultados
+                    {editingId === search.id ? "Cerrar" : "Editar"}
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={runningId !== null}
-                  onClick={() => setEditingId(editingId === search.id ? null : search.id)}
-                >
-                  {editingId === search.id ? "Cerrar" : "Editar"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={runningId !== null}
-                  onClick={() => onToggle(search.id, !search.enabled)}
-                >
-                  {search.enabled ? "Desactivar" : "Activar"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => onDelete(search.id)}
-                >
-                  Eliminar
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={runningId !== null || !search.enabled}
-                  onClick={() => runSearch(search.id)}
-                >
-                  {runningId === search.id ? "Ejecutando…" : "Ejecutar"}
-                </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={runningId !== null}
+                    onClick={() => onToggle(search.id, !search.enabled)}
+                  >
+                    {search.enabled ? "Desactivar" : "Activar"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => onDelete(search.id)}
+                  >
+                    Eliminar
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={runningId !== null || !search.enabled}
+                    onClick={() => runSearch(search.id)}
+                  >
+                    {runningId === search.id ? "Ejecutando…" : "Ejecutar"}
+                  </Button>
+                </div>
               </div>
-            </CardAction>
-          </Card>
-        ))}
+
+              {editingId === search.id && (
+                <CardContent>
+                  <EditSearchForm
+                    search={search}
+                    onDone={() => {
+                      setEditingId(null);
+                      router.refresh();
+                    }}
+                  />
+                </CardContent>
+              )}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
@@ -250,12 +292,16 @@ export function SearchesView({
 function EmptyState() {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Sin búsquedas todavía</CardTitle>
-        <CardDescription>
-          Crea tu primera búsqueda de vuelos para empezar a monitorizar precios.
-        </CardDescription>
-      </CardHeader>
+      <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+        <Plane className="size-8 text-brand/60" aria-hidden />
+        <p className="font-semibold text-brand-dark">
+          ☁️ Estamos esperando tus primeros resultados
+        </p>
+        <p className="max-w-md text-sm text-muted-foreground">
+          Crea tu primera búsqueda de vuelos en el formulario de arriba para
+          empezar a monitorizar precios.
+        </p>
+      </CardContent>
     </Card>
   );
 }

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Iniciar sesión | Flight Deal Tracker",
+  title: "Iniciar sesión | FlightDeal",
 };
 
 export default async function LoginPage() {

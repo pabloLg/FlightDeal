@@ -86,7 +86,7 @@ export default async function DashboardPage() {
     }
   }
 
-  const bestBySearch = new Map<string, FlightOptionRow>();
+  const optionsBySearch = new Map<string, FlightOptionRow[]>();
   if (resultsExecution.size > 0) {
     const { data: options } = await supabase
       .from("flight_options")
@@ -96,7 +96,9 @@ export default async function DashboardPage() {
       .in("execution_id", [...resultsExecution.values()])
       .order("price_eur", { ascending: true });
     for (const opt of (options ?? []) as FlightOptionRow[]) {
-      if (!bestBySearch.has(opt.search_id)) bestBySearch.set(opt.search_id, opt);
+      const list = optionsBySearch.get(opt.search_id);
+      if (list) list.push(opt);
+      else optionsBySearch.set(opt.search_id, [opt]);
     }
   }
 
@@ -132,29 +134,36 @@ export default async function DashboardPage() {
     }
   }
 
+  const cheapestBySearch = new Map<string, number>();
+  for (const [id, list] of optionsBySearch) {
+    if (list.length > 0) cheapestBySearch.set(id, Number(list[0].price_eur));
+  }
+
   const deals: DealType[] = (searches ?? [])
     .flatMap((s) => {
-      const opt = bestBySearch.get(s.id);
-      if (!opt) return [];
-      return [
-        {
-          searchId: s.id,
-          origin: s.origin,
-          destination: s.destination,
-          departDate: s.depart_date,
-          returnDate: s.return_date,
-          tripType: s.trip_type,
-          cabinClass: s.cabin_class,
-          stops: s.stops,
-          adults: s.adults,
-          price: Number(opt.price_eur),
-          currency: opt.currency,
-          airlines: opt.airlines ?? [],
-          totalDurationMin: opt.total_duration_min,
-          baseline: baselineBySearch.get(s.id) ?? null,
-          executedAt: lastExecution.get(s.id)?.finished_at ?? null,
-        } satisfies DealType,
-      ];
+      const executedAt = lastExecution.get(s.id)?.finished_at ?? null;
+      const baseline = baselineBySearch.get(s.id) ?? null;
+      return (optionsBySearch.get(s.id) ?? []).map(
+        (opt) =>
+          ({
+            searchId: s.id,
+            optionId: opt.id,
+            origin: s.origin,
+            destination: s.destination,
+            departDate: s.depart_date,
+            returnDate: s.return_date,
+            tripType: s.trip_type,
+            cabinClass: s.cabin_class,
+            stops: s.stops,
+            adults: s.adults,
+            price: Number(opt.price_eur),
+            currency: opt.currency,
+            airlines: opt.airlines ?? [],
+            totalDurationMin: opt.total_duration_min,
+            baseline,
+            executedAt,
+          }) satisfies DealType,
+      );
     })
     .sort((a, b) => a.price - b.price);
 
@@ -173,7 +182,7 @@ export default async function DashboardPage() {
     <main className="mx-auto flex w-full max-w-[1420px] flex-col gap-8 px-6 pb-16">
       <SearchHero />
 
-      <FeaturedDeals deals={deals} />
+      <FeaturedDeals deals={deals} searchCount={searchIds.length} />
 
       <section id="searches" className="scroll-mt-24">
         <div className="mb-3.5">
@@ -188,7 +197,7 @@ export default async function DashboardPage() {
           searches={(searches ?? []).map((s) => ({
             ...s,
             lastExecution: lastExecution.get(s.id) ?? null,
-            bestPrice: bestBySearch.get(s.id)?.price_eur ?? null,
+            bestPrice: cheapestBySearch.get(s.id) ?? null,
           }))}
         />
       </section>

@@ -6,6 +6,7 @@ import type { CabinClass, Stops, TripType } from "@/src/domain/sources/types";
 
 export type Deal = {
   searchId: string;
+  optionId: string;
   origin: string;
   destination: string;
   departDate: string | null;

@@ -152,3 +152,86 @@
     @apply font-sans;
   }
 }
+
+/* Decorative hero (avion + nubes). Origen: samples/flightdeal_design_prototype.html */
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 52px 0 42px;
+}
+.hero-copy {
+  position: relative;
+  z-index: 2;
+  max-width: 760px;
+}
+.plane {
+  position: absolute;
+  right: 7%;
+  top: 15px;
+  font-size: 80px;
+  line-height: 1;
+  transform: rotate(-10deg);
+  filter: drop-shadow(0 12px 10px rgba(23, 75, 112, 0.12));
+}
+.cloud {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  box-shadow: 0 20px 45px rgba(71, 137, 175, 0.08);
+}
+.cloud::before,
+.cloud::after {
+  content: "";
+  position: absolute;
+  background: inherit;
+  border-radius: 50%;
+}
+.cloud.one {
+  width: 280px;
+  height: 65px;
+  right: -30px;
+  top: 118px;
+}
+.cloud.one::before {
+  width: 120px;
+  height: 120px;
+  left: 38px;
+  bottom: 10px;
+}
+.cloud.one::after {
+  width: 95px;
+  height: 95px;
+  left: 135px;
+  bottom: 8px;
+}
+.cloud.two {
+  width: 210px;
+  height: 52px;
+  left: -80px;
+  top: 245px;
+  opacity: 0.65;
+}
+.cloud.two::before {
+  width: 95px;
+  height: 95px;
+  left: 32px;
+  bottom: 6px;
+}
+.cloud.two::after {
+  width: 75px;
+  height: 75px;
+  left: 105px;
+  bottom: 5px;
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding-top: 34px;
+  }
+  .plane {
+    right: -20px;
+    top: 20px;
+    font-size: 60px;
+    opacity: 0.65;
+  }
+}
