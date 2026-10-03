@@ -22,6 +22,23 @@ export interface ChainOutcome {
   attempts: { sourceId: string; degraded: boolean; ms: number; message?: string }[];
 }
 
+export const DEFAULT_MAX_SOURCES_PER_RUN = 3;
+export const DEFAULT_SOURCE_TIMEOUT_MARGIN_MS = 3000;
+
+export function getMaxSourcesPerRun(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.FLIGHT_MAX_SOURCES_PER_RUN;
+  const n = Number(raw);
+  if (Number.isInteger(n) && n > 0 && n <= 10) return n;
+  return DEFAULT_MAX_SOURCES_PER_RUN;
+}
+
+export function getSourceTimeoutMarginMs(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.FLIGHT_SOURCE_TIMEOUT_MARGIN_MS;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= 0) return n;
+  return DEFAULT_SOURCE_TIMEOUT_MARGIN_MS;
+}
+
 export function resolveChain(
   env: SourceEnv = {
     FLIGHT_SOURCES: process.env.FLIGHT_SOURCES,
@@ -84,6 +101,7 @@ export async function searchWithFailover(
   sources: FlightSource[],
   params: FlightSearchParams,
   budgetMs: number = SEARCH_BUDGET_MS,
+  env: Record<string, string | undefined> = process.env,
 ): Promise<ChainOutcome> {
   const attempts: ChainOutcome["attempts"] = [];
   let last: { result: FlightSourceResult; sourceId: string } | null = null;
@@ -91,8 +109,20 @@ export async function searchWithFailover(
   // scraper is the usual one) leaves no time for a fallback, and asking anyway is
   // how the invocation gets killed at the platform cap with nothing recorded.
   const deadline = Date.now() + budgetMs;
+  const marginMs = getSourceTimeoutMarginMs(env);
+  const maxSources = getMaxSourcesPerRun(env);
+  let attempted = 0;
 
   for (const source of sources) {
+    if (attempted >= maxSources) {
+      attempts.push({
+        sourceId: source.id,
+        degraded: true,
+        ms: 0,
+        message: "max_sources_per_run_reached",
+      });
+      continue;
+    }
     if (Date.now() >= deadline) {
       attempts.push({
         sourceId: source.id,
@@ -115,6 +145,7 @@ export async function searchWithFailover(
 
     let result: FlightSourceResult;
     const startedAt = Date.now();
+    attempted++;
     try {
       result = await source.search(params);
     } catch (error) {

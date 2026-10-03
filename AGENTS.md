@@ -37,7 +37,7 @@ Todos se ejecutan en `app/` (working-dir).
 - Supabase local: `supabase start` (requiere Docker), `supabase db reset`, `supabase stop`
 - Migraciones: `supabase migration new <name>` → editar SQL → `supabase db reset`
 
-Instalaciones de npm en este proyecto usan `--legacy-peer-deps` (conflictos por Node 20.15 vs peers de vitest/shadcn; CI usa Node 22 con `npm ci`).
+Local y CI en **Node 22** (local 22.23.2 desde 2026-10-03; CI `node-version: 22`). `npm ci` funciona sin flags: `--legacy-peer-deps` ya no hace falta (el conflicto de peers venía de Node 20.15).
 
 ## Estructura
 

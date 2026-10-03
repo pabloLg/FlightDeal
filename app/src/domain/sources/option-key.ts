@@ -16,3 +16,13 @@ export function optionKey(
     "_",
   );
 }
+
+// Itinerary-only dedupe key (no sourceId). Used exclusively for cross-source
+// aggregation/deduplication, so the identity of the physical itinerary remains
+// stable regardless of which source returned it (Opción B).
+export function itineraryDedupeKey(
+  outboundLegs: FlightLeg[],
+  inboundLegs: FlightLeg[],
+): string {
+  return [...outboundLegs.map(legPart), ...inboundLegs.map(legPart)].join("_");
+}

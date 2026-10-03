@@ -75,6 +75,17 @@ export async function runExecution(
     // attempts so timings can be compared later without new tables (F10).
     const durationMs = Date.now() - startedAt;
 
+    const agg = (result as any).aggregated as
+      | {
+          sourcesAttempted: string[];
+          sourcesIncluded: string[];
+          mergedCount: number;
+          duplicatesRemoved: number;
+          maxSourcesPerRun: number;
+          selectedSource: string | null;
+        }
+      | undefined;
+
     // Fail-closed: every source degraded (or none was configured), so nothing
     // is persisted and no alert is evaluated against prices we do not have.
     if (result.degraded) {
@@ -89,6 +100,18 @@ export async function runExecution(
           attempts: outcome.attempts,
           durationMs,
           skipped,
+          ...(agg
+            ? {
+                aggregation: {
+                  mergedCount: agg.mergedCount,
+                  sourcesAttempted: agg.sourcesAttempted,
+                  sourcesIncluded: agg.sourcesIncluded,
+                  selectedSource: agg.selectedSource,
+                  maxSourcesPerRun: agg.maxSourcesPerRun,
+                  duplicatesRemoved: agg.duplicatesRemoved,
+                },
+              }
+            : {}),
         },
       });
       return;
@@ -104,6 +127,18 @@ export async function runExecution(
           sourceId: outcome.sourceId,
           message: result.message ?? "no_flights",
           durationMs,
+          ...(agg
+            ? {
+                aggregation: {
+                  mergedCount: agg.mergedCount,
+                  sourcesAttempted: agg.sourcesAttempted,
+                  sourcesIncluded: agg.sourcesIncluded,
+                  selectedSource: agg.selectedSource,
+                  maxSourcesPerRun: agg.maxSourcesPerRun,
+                  duplicatesRemoved: agg.duplicatesRemoved,
+                },
+              }
+            : {}),
         },
       });
       return;
@@ -157,6 +192,18 @@ export async function runExecution(
         optionCount: result.options.length,
         attempts: outcome.attempts,
         durationMs: Date.now() - startedAt,
+        ...(agg
+          ? {
+              aggregation: {
+                mergedCount: agg.mergedCount,
+                sourcesAttempted: agg.sourcesAttempted,
+                sourcesIncluded: agg.sourcesIncluded,
+                selectedSource: agg.selectedSource,
+                maxSourcesPerRun: agg.maxSourcesPerRun,
+                duplicatesRemoved: agg.duplicatesRemoved,
+              },
+            }
+          : {}),
       },
     });
 

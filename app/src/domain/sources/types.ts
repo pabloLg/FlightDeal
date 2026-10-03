@@ -28,6 +28,11 @@ export interface FlightLeg {
   durationMin: number;
 }
 
+export interface FlightOptionBookingUrl {
+  source: string;
+  url: string;
+}
+
 export interface FlightOption {
   id: string;
   price: number;
@@ -36,6 +41,10 @@ export interface FlightOption {
   inboundLegs: FlightLeg[];
   airlines: string[];
   totalDurationMin: number;
+  /** Booking URL when a source exposes it directly for this option. */
+  bookingUrl?: string;
+  /** Known booking URLs from different sources for the same itinerary (domain-only, not persisted). */
+  bookingUrls?: FlightOptionBookingUrl[];
 }
 
 export interface FlightSourceResult {
