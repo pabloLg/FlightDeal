@@ -256,6 +256,7 @@ export function SearchesView({
                   <Button
                     size="sm"
                     variant="destructive"
+                    disabled={runningId !== null}
                     onClick={() => onDelete(search.id)}
                   >
                     Eliminar
@@ -274,6 +275,7 @@ export function SearchesView({
                 <CardContent>
                   <EditSearchForm
                     search={search}
+                    busy={runningId !== null}
                     onDone={() => {
                       setEditingId(null);
                       router.refresh();
@@ -312,15 +314,18 @@ type SearchWithExecution = SearchRow & { lastExecution: ExecutionRow | null };
 
 function EditSearchForm({
   search,
+  busy,
   onDone,
 }: {
   search: SearchWithExecution;
+  busy: boolean;
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState(
     updateSearch.bind(null, search.id),
     emptyState,
   );
+  const [roundTrip, setRoundTrip] = useState(search.trip_type === "round_trip");
 
   useEffect(() => {
     if (state !== emptyState && !("error" in state) && !pending) {
@@ -330,6 +335,14 @@ function EditSearchForm({
 
   return (
     <form action={formAction} className="grid gap-3 sm:grid-cols-4">
+      <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <input
+          checked={roundTrip}
+          onChange={(e) => setRoundTrip(e.target.checked)}
+          type="checkbox"
+        />
+        Ida y vuelta
+      </label>
       <Label htmlFor={`origin-${search.id}`} className="sr-only">
         Origen
       </Label>
@@ -358,9 +371,14 @@ function EditSearchForm({
         id={`return-${search.id}`}
         name="return_date"
         type="date"
+        disabled={!roundTrip}
         defaultValue={search.return_date ?? ""}
       />
-      <Input name="trip_type" type="hidden" value={search.trip_type} />
+      <input
+        name="trip_type"
+        type="hidden"
+        value={roundTrip ? "round_trip" : "one_way"}
+      />
       <Input name="cabin_class" type="hidden" value={search.cabin_class} />
       <Input name="stops" type="hidden" value={search.stops} />
       <Input name="adults" type="hidden" value={search.adults} />
@@ -388,7 +406,7 @@ function EditSearchForm({
         placeholder="Umbral (EUR)"
         defaultValue={search.alert_threshold_eur ?? ""}
       />
-      <Button type="submit" size="sm" disabled={pending}>
+      <Button type="submit" size="sm" disabled={pending || busy}>
         Guardar
       </Button>
       {state?.error && (

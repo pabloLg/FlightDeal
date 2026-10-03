@@ -62,7 +62,7 @@ export default async function DashboardPage() {
     .from("searches")
     .select("*")
     .eq("profile_id", user.id)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false });
 
   const searchIds = (searches ?? []).map((s) => s.id);
 
@@ -183,8 +183,6 @@ export default async function DashboardPage() {
     <main className="mx-auto flex w-full max-w-[1420px] flex-col gap-8 px-6 pb-16">
       <SearchHero />
 
-      <FeaturedDeals deals={deals} searchCount={searchIds.length} />
-
       <section id="searches" className="scroll-mt-24">
         <div className="mb-3.5">
           <h2 className="text-xl font-bold tracking-tight text-brand-dark">
@@ -202,6 +200,8 @@ export default async function DashboardPage() {
           }))}
         />
       </section>
+
+      <FeaturedDeals deals={deals} searchCount={searchIds.length} />
 
       <section className="grid gap-4 md:grid-cols-3">
         <Card className="md:col-span-2">

@@ -62,7 +62,6 @@ function LegTimeline({ legs, label }: { legs: FlightLeg[]; label: string }) {
 export function FlightDealCard({
   deal,
   isBestPrice,
-  showItinerary = false,
 }: {
   deal: {
     id: string;
@@ -73,7 +72,6 @@ export function FlightDealCard({
     bookingUrl: string | null;
   };
   isBestPrice: boolean;
-  showItinerary?: boolean;
 }) {
   const legs = deal.outboundLegs;
   const numbers = [
@@ -134,26 +132,17 @@ export function FlightDealCard({
           {totalLegs === 0 && " —"}
         </p>
 
-        {showItinerary ? (
-          <div className="flex flex-col gap-3">
+        <details open className="rounded-lg border border-border px-3 py-2">
+          <summary className="cursor-pointer text-sm font-semibold text-brand-dark">
+            Itinerario
+          </summary>
+          <div className="mt-2 flex flex-col gap-3">
             <LegTimeline legs={legs} label="Ida" />
             {deal.inboundLegs.length > 0 && (
               <LegTimeline legs={deal.inboundLegs} label="Regreso" />
             )}
           </div>
-        ) : (
-          <details className="rounded-lg border border-border px-3 py-2">
-            <summary className="cursor-pointer text-sm font-semibold text-brand-dark">
-              Mostrar itinerario
-            </summary>
-            <div className="mt-2 flex flex-col gap-3">
-              <LegTimeline legs={legs} label="Ida" />
-              {deal.inboundLegs.length > 0 && (
-                <LegTimeline legs={deal.inboundLegs} label="Regreso" />
-              )}
-            </div>
-          </details>
-        )}
+        </details>
 
         {deal.bookingUrl ? (
           <a
