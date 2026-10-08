@@ -2,7 +2,7 @@ import type { FlightSource } from "./flight-source";
 import { SEARCH_BUDGET_MS } from "./flight-source";
 import { buildAggregationContext, mergeFlightOptions } from "./aggregator";
 import { getMaxSourcesPerRun, getSourceTimeoutMarginMs } from "./chain";
-import type { FlightSearchParams, FlightSourceResult } from "./types";
+import type { FlightSearchParams, FlightOption, FlightSourceResult } from "./types";
 
 export interface MergeAttempt {
   sourceId: string;
@@ -136,10 +136,18 @@ export async function searchWithSequentialMerge(
   );
 
   if (accumulated.size > 0) {
-    const mergedOptions = Array.from(accumulated.values()).map((o) => {
-      const { sources: _s, selectedSource: _ss, ...rest } = o as any;
-      return rest as import("./types").FlightOption;
-    });
+    // Strip the aggregation-only fields before returning domain options.
+    const mergedOptions: FlightOption[] = Array.from(accumulated.values()).map((o) => ({
+      id: o.id,
+      price: o.price,
+      currency: o.currency,
+      outboundLegs: o.outboundLegs,
+      inboundLegs: o.inboundLegs,
+      airlines: o.airlines,
+      totalDurationMin: o.totalDurationMin,
+      ...(o.bookingUrl ? { bookingUrl: o.bookingUrl } : {}),
+      ...(o.bookingUrls ? { bookingUrls: o.bookingUrls } : {}),
+    }));
     return {
       result: {
         options: mergedOptions,

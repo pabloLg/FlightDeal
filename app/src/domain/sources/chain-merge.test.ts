@@ -31,14 +31,6 @@ const ok = (id: string, price = 50): FlightSourceResult => ({
   degraded: false,
 });
 
-const degraded = (reason: string): FlightSourceResult => ({
-  options: [],
-  currency: "EUR",
-  structureVersion: 1,
-  degraded: true,
-  message: reason,
-});
-
 class StubSource implements FlightSource {
   readonly id: string;
   private readonly behaviour: () => Promise<FlightSourceResult>;
@@ -59,11 +51,6 @@ class StubSource implements FlightSource {
 
 const stub = (id: string, result: FlightSourceResult) =>
   new StubSource(id, async () => result);
-
-const throwing = (id: string, error: Error) =>
-  new StubSource(id, async () => {
-    throw error;
-  });
 
 describe("searchWithSequentialMerge", () => {
   it("merges results from multiple sources", async () => {

@@ -1,4 +1,3 @@
-import type { FlightLeg } from "./types";
 import { itineraryDedupeKey } from "./option-key";
 
 export { itineraryDedupeKey };

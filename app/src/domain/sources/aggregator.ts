@@ -44,8 +44,13 @@ export interface AggregationOptions {
   onBudgetExhausted?: (msg: string) => void;
 }
 
+export type MergedFlightOption = FlightOption & {
+  sources: string[];
+  selectedSource: string;
+};
+
 export function mergeFlightOptions(
-  accumulated: Map<string, FlightOption & { sources: string[]; selectedSource: string }>,
+  accumulated: Map<string, MergedFlightOption>,
   incoming: FlightOption[],
   sourceId: string,
 ): { merged: number; duplicates: number } {
@@ -119,7 +124,7 @@ export function mergeFlightOptions(
 }
 
 export function buildAggregationContext(
-  accumulated: Map<string, FlightOption & { sources: string[]; selectedSource: string }>,
+  accumulated: Map<string, MergedFlightOption>,
   sourcesAttempted: string[],
   sourcesIncluded: string[],
   maxSourcesPerRun: number,
@@ -131,7 +136,7 @@ export function buildAggregationContext(
       sources: opt.sources,
       selectedSource: opt.selectedSource,
       price: opt.price,
-      hasBookingUrl: Boolean((opt as any).bookingUrl || ((opt as any).bookingUrls && (opt as any).bookingUrls.length > 0)),
+      hasBookingUrl: Boolean(opt.bookingUrl || (opt.bookingUrls?.length ?? 0) > 0),
     };
     if (opt.sources.length > 1) duplicatesRemoved += opt.sources.length - 1;
   }

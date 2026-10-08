@@ -1,0 +1,81 @@
+{
+  "search_metadata": {
+    "status": "Success"
+  },
+  "search_parameters": {
+    "currency": "EUR"
+  },
+  "best_flights": [
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Josep Tarradellas Barcelona-El Prat Airport",
+            "id": "BCN",
+            "time": "2026-11-22 17:30"
+          },
+          "arrival_airport": {
+            "name": "Adolfo Suárez Madrid-Barajas Airport",
+            "id": "MAD",
+            "time": "2026-11-22 18:55"
+          },
+          "duration": 85,
+          "airline": "Vueling",
+          "flight_number": "VY 1008"
+        }
+      ],
+      "total_duration": 85,
+      "price": 125,
+      "type": "Round trip",
+      "booking_token": "WyJDalJJYkZZMk5WbHVlalpCVW1OQlREWTJXbWRDUnkwdExTMHRMUzB0TFhscGRISXpNRUZCUVVGQlIzSkhla0ZGU0VKUlJUQkJFZ1pXV1RFd01EZ2FDZ2pVWVJBQ0dnTkZWVkk0SEhDeGJRPT0iLFtbIk1BRCIsIjIwMjYtMTEtMTUiLCJCQ04iLG51bGwsIlVYIiwiNzcwMSJdXSxbWyJCQ04iLCIyMDI2LTExLTIyIiwiTUFEIixudWxsLCJWWSIsIjEwMDgiXV1d"
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Josep Tarradellas Barcelona-El Prat Airport",
+            "id": "BCN",
+            "time": "2026-11-22 20:30"
+          },
+          "arrival_airport": {
+            "name": "Adolfo Suárez Madrid-Barajas Airport",
+            "id": "MAD",
+            "time": "2026-11-22 22:00"
+          },
+          "duration": 90,
+          "airline": "Air Europa",
+          "flight_number": "UX 7708"
+        }
+      ],
+      "total_duration": 90,
+      "price": 131,
+      "type": "Round trip",
+      "booking_token": "WyJDalJJYkZZMk5WbHVlalpCVW1OQlREWTJXbWRDUnkwdExTMHRMUzB0TFhscGRISXpNRUZCUVVGQlIzSkhla0ZGU0VKUlJUQkJFZ1pWV0RjM01EZ2FDZ2lyWmhBQ0dnTkZWVkk0SEhEUWNnPT0iLFtbIk1BRCIsIjIwMjYtMTEtMTUiLCJCQ04iLG51bGwsIlVYIiwiNzcwMSJdXSxbWyJCQ04iLCIyMDI2LTExLTIyIiwiTUFEIixudWxsLCJVWCIsIjc3MDgiXV1d"
+    }
+  ],
+  "other_flights": [
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Josep Tarradellas Barcelona-El Prat Airport",
+            "id": "BCN",
+            "time": "2026-11-22 11:50"
+          },
+          "arrival_airport": {
+            "name": "Adolfo Suárez Madrid-Barajas Airport",
+            "id": "MAD",
+            "time": "2026-11-22 13:20"
+          },
+          "duration": 90,
+          "airline": "Air Europa",
+          "flight_number": "UX 7706"
+        }
+      ],
+      "total_duration": 90,
+      "price": 149,
+      "type": "Round trip",
+      "booking_token": "WyJDalJJYkZZMk5WbHVlalpCVW1OQlREWTJXbWRDUnkwdExTMHRMUzB0TFhscGRISXpNRUZCUVVGQlIzSkhla0ZGU0VKUlJUQkJFZ1pWV0RjM01EWWFDZ2l6ZEJBQ0dnTkZWVkk0SEhDd2dnRT0iLFtbIk1BRCIsIjIwMjYtMTEtMTUiLCJCQ04iLG51bGwsIlVYIiwiNzcwMSJdXSxbWyJCQ04iLCIyMDI2LTExLTIyIiwiTUFEIixudWxsLCJVWCIsIjc3MDYiXV1d"
+    }
+  ]
+}

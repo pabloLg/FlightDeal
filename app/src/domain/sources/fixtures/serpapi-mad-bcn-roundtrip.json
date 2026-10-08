@@ -1,0 +1,81 @@
+{
+  "search_metadata": {
+    "status": "Success"
+  },
+  "search_parameters": {
+    "currency": "EUR"
+  },
+  "best_flights": [
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Adolfo Suárez Madrid-Barajas Airport",
+            "id": "MAD",
+            "time": "2026-11-15 07:30"
+          },
+          "arrival_airport": {
+            "name": "Josep Tarradellas Barcelona-El Prat Airport",
+            "id": "BCN",
+            "time": "2026-11-15 08:55"
+          },
+          "duration": 85,
+          "airline": "Air Europa",
+          "flight_number": "UX 7701"
+        }
+      ],
+      "total_duration": 85,
+      "price": 125,
+      "type": "Round trip",
+      "departure_token": "WyJDalJJVVZGeU9YRkNUWGhUWW05QlUwOWpUbmRDUnkwdExTMHRMUzB0TFc5cmIza3pPVUZCUVVGQlIzSkhlVjlqUTJsTE5rRkJFZ1pWV0RjM01ERWFDZ2pVWVJBQ0dnTkZWVkk0SEhDeGJRPT0iLFtbIk1BRCIsIjIwMjYtMTEtMTUiLCJCQ04iLG51bGwsIlVYIiwiNzcwMSJdXV0="
+    },
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Adolfo Suárez Madrid-Barajas Airport",
+            "id": "MAD",
+            "time": "2026-11-15 19:30"
+          },
+          "arrival_airport": {
+            "name": "Josep Tarradellas Barcelona-El Prat Airport",
+            "id": "BCN",
+            "time": "2026-11-15 20:50"
+          },
+          "duration": 80,
+          "airline": "Vueling",
+          "flight_number": "VY 1009"
+        }
+      ],
+      "total_duration": 80,
+      "price": 131,
+      "type": "Round trip",
+      "departure_token": "WyJDalJJVVZGeU9YRkNUWGhUWW05QlUwOWpUbmRDUnkwdExTMHRMUzB0TFc5cmIza3pPVUZCUVVGQlIzSkhlVjlqUTJsTE5rRkJFZ1pXV1RFd01Ea2FDZ2pqWlJBQ0dnTkZWVkk0SEhEL2NRPT0iLFtbIk1BRCIsIjIwMjYtMTEtMTUiLCJCQ04iLG51bGwsIlZZIiwiMTAwOSJdXV0="
+    }
+  ],
+  "other_flights": [
+    {
+      "flights": [
+        {
+          "departure_airport": {
+            "name": "Adolfo Suárez Madrid-Barajas Airport",
+            "id": "MAD",
+            "time": "2026-11-15 21:40"
+          },
+          "arrival_airport": {
+            "name": "Josep Tarradellas Barcelona-El Prat Airport",
+            "id": "BCN",
+            "time": "2026-11-15 22:55"
+          },
+          "duration": 75,
+          "airline": "Iberia",
+          "flight_number": "IB 427"
+        }
+      ],
+      "total_duration": 75,
+      "price": 137,
+      "type": "Round trip",
+      "departure_token": "WyJDalJJVVZGeU9YRkNUWGhUWW05QlUwOWpUbmRDUnkwdExTMHRMUzB0TFc5cmIza3pPVUZCUVVGQlIzSkhlVjlqUTJsTE5rRkJFZ1ZKUWpReU54b0tDSVJyRUFJYUEwVlZVamdjY1BGMyIsW1siTUFEIiwiMjAyNi0xMS0xNSIsIkJDTiIsbnVsbCwiSUIiLCI0MjciXV1d"
+    }
+  ]
+}

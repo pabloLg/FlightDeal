@@ -115,10 +115,18 @@ directo) ni `multi_city_json`.
   solo las fechas exactas mentiría sobre lo que el usuario pidió. El upgrade es
   barato: `POST /api/fares/search` de Ignav acepta un rango de fechas en una llamada.
   **Pendiente de decisión.**
+  - **Corrección 2026-10-07 (verificado contra `ignav.com/docs/search`): ese
+    endpoint es multi-city/open-jaw con fechas exactas, NO acepta rango de
+    fechas.** No hay upgrade en una llamada; decisión del usuario: flex queda
+    Mock-only y las APIs siguen en `flex_unsupported` (Google documenta que
+    busca fechas exactas).
 - **Regreso de SerpAPI**: `inboundLegs` va vacío; el precio sí es el total ida+vuelta,
   pero los tramos de vuelta exigen un **segundo request** con el `departure_token` de
   cada resultado. Es el mismo trabajo que el click-through de Google, así que se
   resolverá una sola vez para ambos en la fase de wiring.
+  - **Cerrado 2026-10-07**: 2º request implementado solo para la opción más barata
+    (+1 búsqueda por round-trip), enriquecimiento nunca puerta, `returnLegs` en
+    `raw_result`, versión 1→2, fixtures en vivo. Precio total confirmado (125 = 125).
 - Ignav **no tiene parámetro de moneda** (solo `market`, que es país). La moneda se
   toma de `price.currency` de la respuesta, que puede no coincidir con la del perfil
   (D8, sin conversión FX). `flight_options` ya guarda la moneda por fila desde F9.

@@ -109,7 +109,6 @@ export async function searchWithFailover(
   // scraper is the usual one) leaves no time for a fallback, and asking anyway is
   // how the invocation gets killed at the platform cap with nothing recorded.
   const deadline = Date.now() + budgetMs;
-  const marginMs = getSourceTimeoutMarginMs(env);
   const maxSources = getMaxSourcesPerRun(env);
   let attempted = 0;
 

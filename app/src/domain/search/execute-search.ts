@@ -1,8 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { evaluateAlert } from "@/src/domain/alerts/evaluate-alert";
+import type { AggregationContext } from "@/src/domain/sources/aggregator";
 import { resolveChain, searchWithFailover } from "@/src/domain/sources/chain";
-import type { FlightSearchParams } from "@/src/domain/sources/types";
+import type {
+  FlightSearchParams,
+  FlightSourceResult,
+} from "@/src/domain/sources/types";
 
 export type Db = SupabaseClient;
 
@@ -75,16 +79,13 @@ export async function runExecution(
     // attempts so timings can be compared later without new tables (F10).
     const durationMs = Date.now() - startedAt;
 
-    const agg = (result as any).aggregated as
-      | {
-          sourcesAttempted: string[];
-          sourcesIncluded: string[];
-          mergedCount: number;
-          duplicatesRemoved: number;
-          maxSourcesPerRun: number;
-          selectedSource: string | null;
-        }
-      | undefined;
+    // SerpAPI return-legs traceability (suggestion 1): which second-request
+    // outcome this run had, if the winning source reported one.
+    const returnLegs = (result as { returnLegs?: string }).returnLegs;
+
+    const agg = (
+      result as FlightSourceResult & { aggregated?: AggregationContext }
+    ).aggregated;
 
     // Fail-closed: every source degraded (or none was configured), so nothing
     // is persisted and no alert is evaluated against prices we do not have.
@@ -127,6 +128,7 @@ export async function runExecution(
           sourceId: outcome.sourceId,
           message: result.message ?? "no_flights",
           durationMs,
+          ...(returnLegs ? { returnLegs } : {}),
           ...(agg
             ? {
                 aggregation: {
@@ -192,6 +194,7 @@ export async function runExecution(
         optionCount: result.options.length,
         attempts: outcome.attempts,
         durationMs: Date.now() - startedAt,
+        ...(returnLegs ? { returnLegs } : {}),
         ...(agg
           ? {
               aggregation: {
