@@ -1,7 +1,11 @@
 import { Flame, Plane } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
-import type { FlightLeg } from "@/src/domain/sources/types";
+import type {
+  FlightLeg,
+  FlightOptionBookingLink,
+} from "@/src/domain/sources/types";
+import { splitPostData } from "@/src/domain/sources/booking-links";
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("es-ES", {
@@ -29,6 +33,22 @@ function flightLabel(leg: FlightLeg): string {
   const name = leg.airlineName ?? leg.airline;
   const number = bareNumber(leg);
   return number ? `${name} ${number}` : name;
+}
+
+/** Human label for the source badge (tarjeta por fuente). Unknown → hidden. */
+function sourceLabel(source: string | null): string | null {
+  switch (source) {
+    case "google_flights":
+      return "Google";
+    case "serpapi":
+      return "SerpAPI";
+    case "ignav":
+      return "Ignav";
+    case "mock":
+      return "Mock";
+    default:
+      return null;
+  }
 }
 
 function LegTimeline({ legs, label }: { legs: FlightLeg[]; label: string }) {
@@ -70,6 +90,10 @@ export function FlightDealCard({
     outboundLegs: FlightLeg[];
     inboundLegs: FlightLeg[];
     bookingUrl: string | null;
+    /** Source that observed this option (tarjeta por fuente). */
+    source: string | null;
+    /** Per-provider purchase links (fase booking). Null when none fetched. */
+    bookingLinks: FlightOptionBookingLink[] | null;
   };
   isBestPrice: boolean;
 }) {
@@ -82,6 +106,21 @@ export function FlightDealCard({
   ];
   const totalLegs = legs.length + deal.inboundLegs.length;
   const stops = numbers.length === 0 ? null : Math.max(0, legs.length - 1);
+  // Provider links with their decoded form field (post handoffs only). A post
+  // link without a valid body is dropped: the generic link stays as fallback.
+  const providerLinks = (deal.bookingLinks ?? [])
+    .map((link) => ({
+      link,
+      field:
+        link.method === "post" && link.postData
+          ? splitPostData(link.postData)
+          : null,
+    }))
+    .filter(
+      (entry) =>
+        entry.link.method === "get" ||
+        (entry.link.method === "post" && entry.field !== null),
+    );
 
   return (
     <Card className={isBestPrice ? "ring-2 ring-opportunity/40" : undefined}>
@@ -91,6 +130,11 @@ export function FlightDealCard({
             <div className="text-base font-extrabold text-brand-dark">
               {carriers.join(", ") || "—"}
             </div>
+            {sourceLabel(deal.source) ? (
+              <div className="text-[11px] font-medium text-muted-foreground">
+                vía {sourceLabel(deal.source)}
+              </div>
+            ) : null}
             {numbers.length > 0 && (
               <div className="text-xs text-muted-foreground">
                 {numbers.join(" · ")}
@@ -143,6 +187,39 @@ export function FlightDealCard({
             )}
           </div>
         </details>
+
+        {providerLinks.map(({ link, field }) =>
+          link.method === "post" ? (
+            <form
+              key={`${link.provider}-${link.price}`}
+              method="post"
+              action={link.url}
+              target="_blank"
+            >
+              {field ? (
+                <input type="hidden" name={field.name} value={field.value} />
+              ) : null}
+              <button
+                type="submit"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-brand/40 px-3 py-2.5 text-center text-sm font-bold text-brand-dark transition-colors hover:bg-brand/10"
+              >
+                <Plane className="size-4" aria-hidden />
+                {link.provider} · {link.price.toFixed(0)} {link.currency} →
+              </button>
+            </form>
+          ) : (
+            <a
+              key={`${link.provider}-${link.price}`}
+              className="flex items-center justify-center gap-1.5 rounded-lg border border-brand/40 px-3 py-2.5 text-center text-sm font-bold text-brand-dark transition-colors hover:bg-brand/10"
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Plane className="size-4" aria-hidden />
+              {link.provider} · {link.price.toFixed(0)} {link.currency} →
+            </a>
+          ),
+        )}
 
         {deal.bookingUrl ? (
           <a

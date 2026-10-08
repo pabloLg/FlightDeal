@@ -214,7 +214,7 @@ export default async function SearchResultsPage({
 
   const { data: options } = await supabase
     .from("flight_options")
-    .select("id, price_eur, currency, outbound_legs, inbound_legs, airlines, total_duration_min")
+    .select("id, price_eur, currency, outbound_legs, inbound_legs, airlines, total_duration_min, source_id, booking_links")
     .eq("execution_id", execution.id)
     .order("price_eur", { ascending: true });
 
@@ -355,6 +355,8 @@ const { data: dispatches } = await supabase
                     outboundLegs: option.outbound_legs,
                     inboundLegs: option.inbound_legs,
                     bookingUrl,
+                    source: option.source_id,
+                    bookingLinks: option.booking_links,
                   }}
                   isBestPrice={Number(option.price_eur) === bestPrice}
                 />

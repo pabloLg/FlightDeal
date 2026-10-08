@@ -1,0 +1,41 @@
+{
+  "booking_options": [
+    {
+      "legs": [
+        "outbound"
+      ],
+      "links": [
+        {
+          "provider_name": "Air Europa",
+          "provider_type": "airline",
+          "price": {
+            "amount": 83.0,
+            "currency": "USD",
+            "status": "verified"
+          },
+          "url": "https://www.aireuropa.com/es/en/deeplink?departure_airport=MAD&arrival_airport=BCN&departure_date=20261115&trip_type=O&adults=1&children=0&infants=0&config_ext=ext&channel=GOG&utm_source=googleflights-ES&utm_campaign=AlwaysOn-Domestico&utm_medium=metasearches&utm_term=MAD-BCN&utm_content=core&gclid=ADowPOLHb8Txqcx4bh3hzRDA_TxobFmNpgAx4bOHuUTAK8nXQy3Q-1BVU9Xt8bQ6ecdAPeCXz_C-eOXaEAQVxy5qieAIj2DyKdjF0tJ-8imWRpdk8x8&gclsrc=gf"
+        },
+        {
+          "provider_name": "Logitravel",
+          "provider_type": "third_party",
+          "price": {
+            "amount": 83.0,
+            "currency": "USD",
+            "status": "verified"
+          },
+          "url": "https://www.logitravel.com/transportstrxbabylon/availabilityquote/?LineOfBusiness=Flights&ProductType=Flight&hashRooms=30A&CabinClass=1&FamilyDiscount=0&OriginAirportCode=MAD&DestinationCode=BCN&DepartureDateStr=2026-11-15&ItineraryHash=MAD.AIR.BCN.AIR.2026-11-15&FlightHash=UX7701.15/11/2026&access=ws&anuncio=102936369&utm_id=27273&imp=73,53&tot=73,53&gclid=ADowPOI6N0cLg5ySZXyYE4o4VNTEr0J8vO2v2BNY5G53fy06fqkfqjbfkWLQZCkRw7kzF4AkxoprOf6_XxAT1FhkkclOLnmnKYXQXeiY2GnPf1jAngo_&gclsrc=gf"
+        },
+        {
+          "provider_name": "Flightnetwork",
+          "provider_type": "third_party",
+          "price": {
+            "amount": 88.0,
+            "currency": "USD",
+            "status": "verified"
+          },
+          "url": "https://us-en.flightnetwork.com/from/gfs/googleflight?Adult=1&PointOfSaleCountry=US&DisplayedPrice=87.88&DisplayedPriceCurrency=USD&UserLanguage=en&UserCurrency=USD&TripType=OneWay&Slice1=1&Cabin1=Economy&Carrier1=UX&DepartureDate1=2026-11-15&Origin1=MAD&Destination1=BCN&BookingCode1=P&FlightNumber1=7701&t=1791481780&sig=AUriFc1Cs6HqgJejFsnVZAHXQF6gJu0awTHcwNEfQgj1aj7iGGrU4YDMxfaYTNs1EjiH1x4qJVTJYMA-FX-D6HJ74F9h6HA5h5cRD9Eh_Jv61vXVDbhuuFgLK4Xs-RZ9NqTdHgfLbMilCBhQLQQxVrWZ4ACDy6Il3KB1I_ubY8Fbfvd7a4CtT-n1DhgR0ICq23x-6vz-j562GnDbIzRYgkFlB865VmGxxO37WbY-aEQ6QEbSVyaa_KiyiVekTYXqkWfY67vV8mY1Yex3yfpnVYhBWxjPcwUeYZrEpbyfEWyerGILTnEwf4ohEiiQ_7ua4vbTBiCjgGgKkBpKWe3WqcckRkNTo1407q2rxZcLkT4IoT3o96aiidplU1NalEt3q-1TedriFqTN9ukj5yrt6o54sKPd20ouRxHbqqQm-vrft4rzc4WLO6WAuLXhUlvBuZqd7wE3_nLzxAEKQUARXvlHFUeCsf91FS7XtU_aiJCkE1AgkpMKVxHXnBvx_XRprOGd-ZA%3D&ReferralId=GFS&domain=gfs&utm_source=gfs&utm_medium=organic&gclid=ADowPOJr3deYZVjAxZq6MSWIchH-VA5DVl-5KpL7zsbSic5-jRVBtXma4p0FO4cLeWtMZ_dvfNWkIO5mfkh912vvpk7RqFaYeOqRR5EyOmWbt67PEEib&gclsrc=gf"
+        }
+      ]
+    }
+  ]
+}

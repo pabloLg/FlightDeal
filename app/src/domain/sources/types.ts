@@ -33,6 +33,19 @@ export interface FlightOptionBookingUrl {
   url: string;
 }
 
+// Per-provider purchase link for one option (fase booking). `get` links open
+// directly; `post` links (SerpAPI/Google handoff) carry an opaque form body
+// that reproduces booking_request.post_data byte-for-byte.
+export interface FlightOptionBookingLink {
+  provider: string;
+  providerType?: string;
+  price: number;
+  currency: string;
+  url: string;
+  method: "get" | "post";
+  postData?: string;
+}
+
 export interface FlightOption {
   id: string;
   price: number;
@@ -45,6 +58,8 @@ export interface FlightOption {
   bookingUrl?: string;
   /** Known booking URLs from different sources for the same itinerary (domain-only, not persisted). */
   bookingUrls?: FlightOptionBookingUrl[];
+  /** Per-provider purchase links fetched at execution time (persisted). */
+  bookingLinks?: FlightOptionBookingLink[];
 }
 
 export interface FlightSourceResult {

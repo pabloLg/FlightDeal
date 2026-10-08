@@ -156,4 +156,28 @@ describe("runExecution with the failover chain", () => {
     expect(prices.map((p) => p.flight_option_id)).not.toContain("stale-1");
     expect(prices.every((p) => p.price_eur > 0)).toBe(true);
   });
+
+  it("persists the observing source on each option and the summary in raw_result", async () => {
+    process.env.FLIGHT_SOURCES = "mock";
+    const { db, recorded } = stubDb();
+
+    await runExecution(db, search, "exec-1", "EUR");
+
+    const upserted = recorded.find((r) => r.table === "flight_options");
+    expect(
+      (upserted?.rows as { source_id: string }[]).map((r) => r.source_id),
+    ).toEqual(["mock", "mock", "mock"]);
+    expect(lastStatus(recorded)).toMatchObject({
+      status: "completed",
+      raw_result: {
+        sourceId: "mock",
+        aggregation: {
+          sourcesAttempted: ["mock"],
+          sourcesIncluded: ["mock"],
+          optionCount: 3,
+          bestSource: "mock",
+        },
+      },
+    });
+  });
 });

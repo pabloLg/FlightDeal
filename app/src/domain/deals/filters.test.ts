@@ -31,6 +31,8 @@ function row(
     inbound_legs: [],
     airlines: [airline],
     total_duration_min: duration,
+    source_id: null,
+    booking_links: null,
   };
 }
 

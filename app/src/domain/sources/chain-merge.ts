@@ -1,8 +1,11 @@
 import type { FlightSource } from "./flight-source";
 import { SEARCH_BUDGET_MS } from "./flight-source";
-import { buildAggregationContext, mergeFlightOptions } from "./aggregator";
 import { getMaxSourcesPerRun, getSourceTimeoutMarginMs } from "./chain";
-import type { FlightSearchParams, FlightOption, FlightSourceResult } from "./types";
+import type {
+  FlightOption,
+  FlightSearchParams,
+  FlightSourceResult,
+} from "./types";
 
 export interface MergeAttempt {
   sourceId: string;
@@ -13,15 +16,37 @@ export interface MergeAttempt {
   reason?: string;
 }
 
-export interface MergedChainOutcome {
-  result: FlightSourceResult & {
-    aggregated?: ReturnType<typeof buildAggregationContext>;
-  };
-  sourceId: string;
-  attempts: MergeAttempt[];
-  aggregation: ReturnType<typeof buildAggregationContext>;
+// What the run asked, what it kept, and what won. Lives in raw_result next
+// to attempts (no new tables); the UI badge reads the winner from the rows.
+export interface AggregationSummary {
+  sourcesAttempted: string[];
+  sourcesIncluded: string[];
+  optionCount: number;
+  bestPrice: number | null;
+  bestSource: string | null;
+  maxSourcesPerRun: number;
 }
 
+export interface MergedChainOutcome {
+  result: FlightSourceResult & { aggregation?: AggregationSummary };
+  sourceId: string;
+  attempts: MergeAttempt[];
+  aggregation: AggregationSummary;
+  // Source per option, aligned with result.options by index. Rows stay
+  // per-source (tarjeta por fuente, stable dedupe keys) so this is how the
+  // runner knows which source_id to persist on each flight_options row.
+  optionSources: string[];
+  // returnLegs traceability per source (the SerpAPI second request).
+  returnLegsBySource: Record<string, string>;
+}
+
+// Sequential aggregation, tarjeta por fuente: every source is asked in
+// FLIGHT_SOURCES order within one budget and every non-degraded option is
+// kept with its own source. Nothing is fused by price: the same itinerary
+// from two sources stays two rows (two cards), and the cheapest one earns
+// the "best price" badge. A verified-empty result (options: [], degraded:
+// false) stops the chain — asking another source for a price on a route
+// with no fares would persist a bogus fare (F8 doctrine).
 export async function searchWithSequentialMerge(
   sources: FlightSource[],
   params: FlightSearchParams,
@@ -31,14 +56,26 @@ export async function searchWithSequentialMerge(
   const maxSources = getMaxSourcesPerRun(env);
   const marginMs = getSourceTimeoutMarginMs(env);
   const attempts: MergeAttempt[] = [];
-  const accumulated = new Map<
-    string,
-    import("./types").FlightOption & { sources: string[]; selectedSource: string }
-  >();
+  const accumulated: FlightOption[] = [];
+  const optionSources: string[] = [];
   const sourcesAttempted: string[] = [];
   const sourcesIncluded: string[] = [];
+  const returnLegsBySource: Record<string, string> = {};
   const deadline = Date.now() + budgetMs;
+  let bestPrice: number | null = null;
+  let bestSource: string | null = null;
+  let structureVersion = 0;
   let lastDegraded: { result: FlightSourceResult; sourceId: string } | null = null;
+  let emptyResult: { result: FlightSourceResult; sourceId: string } | null = null;
+
+  const summary = (): AggregationSummary => ({
+    sourcesAttempted,
+    sourcesIncluded,
+    optionCount: accumulated.length,
+    bestPrice,
+    bestSource,
+    maxSourcesPerRun: maxSources,
+  });
 
   for (const source of sources) {
     const now = Date.now();
@@ -80,6 +117,7 @@ export async function searchWithSequentialMerge(
     try {
       result = await source.search(params);
     } catch (error) {
+      // A buggy adapter must not abort the chain; treat it as a degradation.
       const message = error instanceof Error ? error.message : String(error);
       result = {
         options: [],
@@ -102,7 +140,10 @@ export async function searchWithSequentialMerge(
       lastDegraded = { result, sourceId: source.id };
       continue;
     }
-    if (result.options.length === 0 && result.message === "no_flights") {
+    const returnLegs = (result as FlightSourceResult & { returnLegs?: string })
+      .returnLegs;
+    if (returnLegs) returnLegsBySource[source.id] = returnLegs;
+    if (result.options.length === 0) {
       attempts.push({
         sourceId: source.id,
         degraded: false,
@@ -111,11 +152,23 @@ export async function searchWithSequentialMerge(
         reason: "no_flights",
         message: result.message,
       });
-      lastDegraded = { result, sourceId: source.id };
-      continue;
+      // Verified-empty stops the chain (F8): the route has no fares, so no
+      // other source is asked. Rows already collected are real observations
+      // and are kept.
+      if (!emptyResult) emptyResult = { result, sourceId: source.id };
+      break;
     }
-    const mergeRes = mergeFlightOptions(accumulated, result.options, source.id);
-    const included = mergeRes.merged > 0 || accumulated.size > 0;
+    for (const option of result.options) {
+      accumulated.push(option);
+      optionSources.push(source.id);
+      if (bestPrice === null || option.price < bestPrice) {
+        bestPrice = option.price;
+        bestSource = source.id;
+      }
+    }
+    if (result.structureVersion > structureVersion) {
+      structureVersion = result.structureVersion;
+    }
     attempts.push({
       sourceId: source.id,
       degraded: false,
@@ -123,42 +176,41 @@ export async function searchWithSequentialMerge(
       included: true,
       message: result.message,
     });
-    if (included && !sourcesIncluded.includes(source.id)) {
+    if (!sourcesIncluded.includes(source.id)) {
       sourcesIncluded.push(source.id);
     }
   }
 
-  const aggregation = buildAggregationContext(
-    accumulated,
-    sourcesAttempted,
-    sourcesIncluded,
-    maxSources,
-  );
+  const aggregation = summary();
 
-  if (accumulated.size > 0) {
-    // Strip the aggregation-only fields before returning domain options.
-    const mergedOptions: FlightOption[] = Array.from(accumulated.values()).map((o) => ({
-      id: o.id,
-      price: o.price,
-      currency: o.currency,
-      outboundLegs: o.outboundLegs,
-      inboundLegs: o.inboundLegs,
-      airlines: o.airlines,
-      totalDurationMin: o.totalDurationMin,
-      ...(o.bookingUrl ? { bookingUrl: o.bookingUrl } : {}),
-      ...(o.bookingUrls ? { bookingUrls: o.bookingUrls } : {}),
-    }));
+  if (accumulated.length > 0) {
     return {
       result: {
-        options: mergedOptions,
+        options: accumulated,
         currency: params.currency,
-        structureVersion: 1,
+        structureVersion,
         degraded: false,
-        aggregated: aggregation,
+        aggregation,
       },
-      sourceId: aggregation.selectedSource || sourcesIncluded[0] || sourcesAttempted[0] || "none",
+      sourceId: bestSource ?? sourcesIncluded[0] ?? sourcesAttempted[0] ?? "none",
       attempts,
       aggregation,
+      optionSources,
+      returnLegsBySource,
+    };
+  }
+
+  if (emptyResult) {
+    return {
+      result: {
+        ...emptyResult.result,
+        aggregation,
+      },
+      sourceId: emptyResult.sourceId,
+      attempts,
+      aggregation,
+      optionSources,
+      returnLegsBySource,
     };
   }
 
@@ -166,11 +218,13 @@ export async function searchWithSequentialMerge(
     return {
       result: {
         ...lastDegraded.result,
-        aggregated: aggregation,
+        aggregation,
       },
       sourceId: lastDegraded.sourceId,
       attempts,
       aggregation,
+      optionSources,
+      returnLegsBySource,
     };
   }
 
@@ -181,10 +235,12 @@ export async function searchWithSequentialMerge(
       structureVersion: 0,
       degraded: true,
       message: "no_sources_configured",
-      aggregated: aggregation,
+      aggregation,
     },
     sourceId: "none",
     attempts,
     aggregation,
+    optionSources,
+    returnLegsBySource,
   };
 }

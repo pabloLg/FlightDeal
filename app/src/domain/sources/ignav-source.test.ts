@@ -10,6 +10,10 @@ const fixture = fs
   .readFileSync(path.join(__dirname, "fixtures", "ignav-mad-bcn.json"), "utf8")
   .replace(/^\uFEFF/, "");
 
+const linksFixture = fs
+  .readFileSync(path.join(__dirname, "fixtures", "ignav-booking-links.json"), "utf8")
+  .replace(/^\uFEFF/, "");
+
 const params: FlightSearchParams = {
   origin: "MAD",
   destination: "BCN",
@@ -184,5 +188,68 @@ describe("IgnavFlightSource", () => {
 
     expect(result.degraded).toBe(true);
     expect(result.message).toBe("fetch_failed:ECONNRESET");
+  });
+});
+
+describe("IgnavFlightSource booking links", () => {
+  function stubSequence(calls: { body: string; status?: number }[]) {
+    const seen: JsonRequest[] = [];
+    let i = 0;
+    const fetcher: JsonFetcher = async (request) => {
+      seen.push(request);
+      const call = calls[Math.min(i++, calls.length - 1)];
+      return { status: call.status ?? 200, body: call.body };
+    };
+    return { fetcher, seen };
+  }
+
+  it("attaches purchase links to the cheapest options", async () => {
+    const { fetcher, seen } = stubSequence([
+      { body: fixture },
+      { body: linksFixture },
+    ]);
+    const result = await source(fetcher).search(params);
+
+    expect(result.degraded).toBe(false);
+    // Fare + one booking-links call per option (both itineraries carry ignav_id).
+    expect(seen).toHaveLength(3);
+    expect(seen[1].url).toContain("/fares/booking-links");
+    expect(JSON.parse(seen[1].body ?? "").ignav_id).toBe(
+      JSON.parse(fixture).itineraries[1].ignav_id,
+    );
+    const cheapest = result.options.find((o) => o.price === 97);
+    expect(cheapest?.bookingLinks?.map((l) => l.provider)).toEqual([
+      "Air Europa",
+      "Logitravel",
+      "Flightnetwork",
+    ]);
+    expect(cheapest?.bookingLinks?.[0]).toMatchObject({
+      price: 83,
+      currency: "USD",
+      method: "get",
+    });
+    expect(typeof cheapest?.bookingLinks?.[0].url).toBe("string");
+  });
+
+  it("keeps the options when booking-links fails", async () => {
+    const { fetcher } = stubSequence([
+      { body: fixture },
+      { body: "Insufficient credit", status: 402 },
+    ]);
+    const result = await source(fetcher).search(params);
+
+    expect(result.degraded).toBe(false);
+    expect(result.options.map((o) => o.price)).toEqual([132, 97]);
+    expect(result.options.every((o) => o.bookingLinks === undefined)).toBe(true);
+  });
+
+  it("makes no booking call without ignav_id", async () => {
+    const payload = JSON.parse(fixture);
+    for (const itinerary of payload.itineraries) delete itinerary.ignav_id;
+    const { fetcher, seen } = stubSequence([{ body: JSON.stringify(payload) }]);
+    const result = await source(fetcher).search(params);
+
+    expect(seen).toHaveLength(1);
+    expect(result.degraded).toBe(false);
   });
 });

@@ -151,10 +151,10 @@ Mantener tests existentes verdes. Añadir tests unitarios para aggregator/merge 
 - sourceId en ChainOutcome puede reflejar selectedSource o primera fuente incluida (mantener compatibilidad con actual).
 - Sin nuevas tablas.
 
-## 18. Notas de implementación (sin implementar)
+## 18. Notas de implementación
 
-- NO IMPLEMENTAR en este paso. Solo plan.
-- Mantener option-key.ts intacto. Añadir itinerary-key.ts o función interna.
+- **Ejecutado el 2026-10-08 en revisión "tarjeta por fuente" (decisión del usuario)**: se cableó `searchWithSequentialMerge` en `execute-search` SUSTITUYENDO al failover (sin flag; vuelta atrás vía `FLIGHT_MAX_SOURCES_PER_RUN=1`), `no_flights` verificado DETIENE la cadena (doctrina F8), y NO se fusionan precios: cada fuente persiste sus filas con `source_id` (migración `20261008203000`) y la UI muestra badge de fuente. `mergeFlightOptions`/`buildAggregationContext`/`searchWithFailover` eliminados con sus tests. La normalización cruzada NO se implementó (prefijos intactos por decisión; sin consumidor tras eliminar la fusión — se retomará si llega el agrupado visual).
+- Mantener option-key.ts intacto salvo lo ya hecho. Añadir itinerary-key.ts o función interna.
 - No modificar schema/migraciones DB.
 - Usar abstracción FlightSource (sin cambios interfaz).
 - MockFlightSource solo dev/test.

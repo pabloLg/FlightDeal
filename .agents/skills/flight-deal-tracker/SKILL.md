@@ -105,7 +105,7 @@ Determinados en F1. Referente: `npm run lint`, `npm run typecheck` (o `tsc --noE
 
 ## Fases pendientes por orden
 
-Ejecución: **F1–F5 ✅, F2c ✅, F7 ✅, F8 ✅, F9 ✅, F10 ✅** (F10 verificado en producción real el 2026-10-02; detalle y los 7 bugs corregidos en la sección F10 de arriba). **MVP cerrado.** **F6 Telegram pospuesta post-MVP por decisión del usuario (2026-10-02)**: no arrancarla sin que lo pida. Aplazados también por decisión del usuario: flexible-dates de Ignav, regreso de SerpAPI (2ª request). F5 deja `alert_dispatches`/`alerts_edge` como contrato de entrada para F6; F7 expone el histórico de dispatchs en `/searches/[id]`.
+Ejecución: **F1–F5 ✅, F2c ✅, F7 ✅, F8 ✅, F9 ✅, F10 ✅** (verificado en producción real el 2026-10-02). **MVP cerrado.** **F6 Telegram pospuesta post-MVP por decisión del usuario (2026-10-02)**: no arrancarla sin que lo pida. **F11 agregación cableada el 2026-10-08 (tarjeta por fuente, sin fusión)**: `searchWithSequentialMerge` en `execute-search`, `flight_options.source_id`, badge de fuente en UI. **Fase booking en curso (2026-10-08)**: híbrido SerpAPI-baratísima (POST handoff) + Ignav top-3 (GET), `flight_options.booking_links`, genérico siempre visible. Aplazados: flexible-dates de Ignav, multidestino/geografía (decisión del usuario).
 
 ## Normas de trabajo
 

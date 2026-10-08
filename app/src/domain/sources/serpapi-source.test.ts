@@ -21,6 +21,10 @@ const returnFixture = fs
   .readFileSync(path.join(__dirname, "fixtures", "serpapi-mad-bcn-return.json"), "utf8")
   .replace(/^\uFEFF/, "");
 
+const bookingFixture = fs
+  .readFileSync(path.join(__dirname, "fixtures", "serpapi-booking-options.json"), "utf8")
+  .replace(/^\uFEFF/, "");
+
 const params: FlightSearchParams = {
   origin: "MAD",
   destination: "BCN",
@@ -226,7 +230,9 @@ describe("SerpApiFlightSource return legs", () => {
     const result = await source(fetcher).search(params);
 
     expect(result.degraded).toBe(false);
-    expect(seen).toHaveLength(2);
+    // Search + return legs + booking attempt (the clamped stub answers the
+    // booking call with the return body, which carries no booking_options).
+    expect(seen).toHaveLength(3);
     const firstToken = JSON.parse(roundtripFixture).best_flights[0].departure_token;
     expect(new URL(seen[1].url).searchParams.get("departure_token")).toBe(firstToken);
 
@@ -318,5 +324,75 @@ describe("SerpApiFlightSource return legs", () => {
 
     expect(result.degraded).toBe(false);
     expect((result as { returnLegs?: string }).returnLegs).toBe("unparsable");
+  });
+});
+
+describe("SerpApiFlightSource booking links", () => {
+  function stubSequence(calls: { body: string; status?: number }[]) {
+    const seen: JsonRequest[] = [];
+    let i = 0;
+    const fetcher: JsonFetcher = async (request) => {
+      seen.push(request);
+      const call = calls[Math.min(i++, calls.length - 1)];
+      return { status: call.status ?? 200, body: call.body };
+    };
+    return { fetcher, seen };
+  }
+
+  it("attaches the cheapest provider links to the cheapest option", async () => {
+    const { fetcher, seen } = stubSequence([
+      { body: roundtripFixture },
+      { body: returnFixture },
+      { body: bookingFixture },
+    ]);
+    const result = await source(fetcher).search(params);
+
+    expect(seen).toHaveLength(3);
+    expect(new URL(seen[2].url).searchParams.get("booking_token")).toBe(
+      JSON.parse(returnFixture).best_flights[0].booking_token,
+    );
+    const cheapest = result.options.find((o) => o.price === 125);
+    expect(cheapest?.bookingLinks?.map((l) => l.provider)).toEqual([
+      "BudgetAir",
+      "Air Europa",
+      "Booking.com",
+    ]);
+    expect(cheapest?.bookingLinks?.[0]).toMatchObject({
+      price: 127,
+      currency: "EUR",
+      url: "https://www.google.com/travel/clk/f",
+      method: "post",
+    });
+    expect(typeof cheapest?.bookingLinks?.[0].postData).toBe("string");
+    expect(
+      result.options.filter((o) => o.price !== 125).every((o) => o.bookingLinks === undefined),
+    ).toBe(true);
+  });
+
+  it("keeps the enriched option when the booking request fails", async () => {
+    const { fetcher } = stubSequence([
+      { body: roundtripFixture },
+      { body: returnFixture },
+      { body: "Too Many Requests", status: 429 },
+    ]);
+    const result = await source(fetcher).search(params);
+
+    expect(result.degraded).toBe(false);
+    const cheapest = result.options.find((o) => o.price === 125);
+    expect(cheapest?.inboundLegs).toHaveLength(1);
+    expect(cheapest?.bookingLinks).toBeUndefined();
+  });
+
+  it("fetches booking links on one way from the first-response token", async () => {
+    const payload = JSON.parse(roundtripFixture);
+    payload.best_flights[0].booking_token = "dG9rZW4=";
+    const { fetcher, seen } = stubSequence([
+      { body: JSON.stringify(payload) },
+      { body: bookingFixture },
+    ]);
+    const result = await source(fetcher).search({ ...params, tripType: "one_way" });
+
+    expect(seen).toHaveLength(2);
+    expect(result.options[0].bookingLinks).toHaveLength(3);
   });
 });

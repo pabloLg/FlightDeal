@@ -1,3 +1,5 @@
+import type { FlightOptionBookingLink } from "@/src/domain/sources/types";
+
 export type FlightOptionRow = {
   id: string;
   price_eur: number;
@@ -6,6 +8,10 @@ export type FlightOptionRow = {
   inbound_legs: FlightLegLike[];
   airlines: string[];
   total_duration_min: number | null;
+  /** Which source observed this row (tarjeta por fuente). Null on old rows. */
+  source_id: string | null;
+  /** Per-provider purchase links (fase booking). Null when none fetched. */
+  booking_links: FlightOptionBookingLink[] | null;
 };
 
 export type FlightLegLike = {
