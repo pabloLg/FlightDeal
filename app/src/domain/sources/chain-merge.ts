@@ -128,6 +128,11 @@ export async function searchWithSequentialMerge(
       };
     }
     const ms = Date.now() - startedAt;
+    // Per-source cost log (F10 parity): Vercel function logs are the only
+    // window into which sources a production run actually asked.
+    console.log(
+      `[chain-merge] ${source.id} ${result.degraded ? "degraded" : `ok:${result.options.length}`} in ${ms}ms${result.message ? ` (${result.message})` : ""}`,
+    );
     if (result.degraded) {
       attempts.push({
         sourceId: source.id,
