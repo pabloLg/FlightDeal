@@ -83,11 +83,15 @@ function StatusPill({ status }: { status: string }) {
 
 export function SearchesView({
   searches,
+  currency,
 }: {
   searches: (SearchRow & {
     lastExecution: ExecutionRow | null;
-    bestPrice: number | null;
+    /** Cheapest observed option, with the currency it was quoted in. */
+    bestPrice: { price: number; currency: string } | null;
   })[];
+  /** Profile currency, used only for the alert threshold label. */
+  currency: string;
 }) {
   const router = useRouter();
   const [runningId, setRunningId] = useState<string | null>(null);
@@ -158,7 +162,9 @@ export function SearchesView({
               : (search.lastExecution?.status ?? null);
           const threshold = search.alert_threshold_eur;
           const reached =
-            threshold != null && search.bestPrice != null && search.bestPrice <= threshold;
+            threshold != null &&
+            search.bestPrice != null &&
+            search.bestPrice.price <= threshold;
 
           return (
             <Card key={search.id} size="sm">
@@ -181,7 +187,7 @@ export function SearchesView({
                   {threshold != null && (
                     <p className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-full bg-sky px-2.5 py-1 text-xs text-brand-dark">
                       <Bell className="size-3.5" aria-hidden />
-                      Avisarme por debajo de {threshold.toFixed(0)} €
+                      Avisarme por debajo de {threshold.toFixed(0)} {currency}
                       {reached && (
                         <span className="font-bold text-savings">
                           · precio alcanzado
@@ -200,7 +206,8 @@ export function SearchesView({
                   {search.bestPrice != null ? (
                     <>
                       <span className="text-sm font-extrabold text-brand-dark">
-                        Desde {search.bestPrice.toFixed(2)} EUR
+                        Desde {search.bestPrice.price.toFixed(2)}{" "}
+                        {search.bestPrice.currency}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         Mejor precio observado
