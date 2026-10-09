@@ -185,7 +185,7 @@ export default async function SearchResultsPage({
   const { data: search, error: searchError } = await supabase
     .from("searches")
     .select(
-      "id, origin, destination, depart_date, return_date, trip_type, cabin_class, stops, adults",
+      "id, origin, destination, depart_date, return_date, trip_type, cabin_class, stops, adults, alert_threshold_eur",
     )
     .eq("id", id)
     .single();
@@ -248,11 +248,14 @@ export default async function SearchResultsPage({
 
   const statsRows = (stats ?? []) as PriceStatRow[];
 
-const { data: dispatches } = await supabase
+  // Only this search's dispatches: the alerts_edge join is filtered, so RLS
+  // (which scopes by owner) is not enough on its own to scope by search.
+  const { data: dispatches } = await supabase
     .from("alert_dispatches")
     .select(
-      "id, price_eur, status, dispatched_at, alerts_edge(threshold_eur, provider)",
+      "id, price_eur, status, dispatched_at, alerts_edge!inner(threshold_eur, provider, search_id)",
     )
+    .eq("alerts_edge.search_id", id)
     .order("dispatched_at", { ascending: false });
 
   const dispatchRows = (dispatches ?? []) as DispatchRow[];
@@ -275,9 +278,13 @@ const { data: dispatches } = await supabase
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" render={<Link href="/dashboard#searches" />}>
-            🔔 Crear alerta
-          </Button>
+          {search.alert_threshold_eur != null ? (
+            <span className="rounded-lg bg-sky px-3 py-2 text-sm font-medium text-brand-dark">
+              Alerta: avisar por debajo de{" "}
+              {search.alert_threshold_eur.toFixed(0)} EUR · se edita en Mis
+              búsquedas
+            </span>
+          ) : null}
           <Button variant="ghost" render={<Link href="/dashboard" />}>
             Volver
           </Button>
@@ -477,8 +484,10 @@ const { data: dispatches } = await supabase
         <CardContent>
           {dispatchRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Aún no se ha disparado ninguna alerta para esta búsqueda. Se
-              disparan cuando el mejor precio baja del umbral configurado.
+              Aún no se ha disparado ninguna alerta para esta búsqueda.{" "}
+              {search.alert_threshold_eur != null
+                ? `Avisamos cuando el mejor precio baja de ${search.alert_threshold_eur.toFixed(0)} EUR.`
+                : "Configura un umbral en Mis búsquedas para recibir avisos."}
             </p>
           ) : (
             <AlertHistory dispatches={dispatchRows} currency={currency} />

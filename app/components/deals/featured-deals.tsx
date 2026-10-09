@@ -7,9 +7,16 @@ import { DealCard, type Deal } from "./deal-card";
 export function FeaturedDeals({
   deals,
   searchCount,
+  featuredIsHonest,
 }: {
   deals: Deal[];
   searchCount: number;
+  /**
+   * Whether the top deal is in the profile currency. Without it, a USD amount
+   * could outrank a EUR one and the "best opportunity" badge would compare
+   * prices that are not comparable.
+   */
+  featuredIsHonest: boolean;
 }) {
   const singleSearch = searchCount === 1;
 
@@ -55,7 +62,7 @@ export function FeaturedDeals({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {deals.map((deal, i) => (
-            <DealCard key={deal.optionId} deal={deal} featured={i === 0} />
+            <DealCard key={deal.optionId} deal={deal} featured={i === 0 && featuredIsHonest} />
           ))}
         </div>
       )}

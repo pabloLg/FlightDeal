@@ -13,6 +13,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import { isoDaysAgo } from "@/src/domain/deals/date-window";
+import {
+  cheapestIn,
+  rankDeals,
+  topIsProfileCurrency,
+  type RankableDeal,
+} from "@/src/domain/deals/rank";
 import type { FlightLeg } from "@/src/domain/sources/types";
 
 export const dynamic = "force-dynamic";
@@ -58,22 +65,39 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data: searches } = await supabase
-    .from("searches")
-    .select("*")
-    .eq("profile_id", user.id)
-    .order("created_at", { ascending: false });
+  // Profile currency decides which group leads and which badge is honest, so
+  // it is fetched next to the searches instead of at the end of the page.
+  const [{ data: searches }, { data: profile }] = await Promise.all([
+    supabase
+      .from("searches")
+      .select("*")
+      .eq("profile_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase.from("profiles").select("currency").eq("id", user.id).single(),
+  ]);
+  const profileCurrency = profile?.currency ?? "EUR";
 
   const searchIds = (searches ?? []).map((s) => s.id);
 
   const lastExecution = new Map<string, ExecutionRow>();
   const resultsExecution = new Map<string, string>();
+  const baselineBySearch = new Map<string, number>();
+  const trendBySearch = new Map<string, number>();
   if (searchIds.length > 0) {
-    const { data: executions } = await supabase
-      .from("search_executions")
-      .select("search_id, id, status, finished_at, created_at")
-      .in("search_id", searchIds)
-      .order("created_at", { ascending: false });
+    // Executions and stats share no dependency, so they run together.
+    const [{ data: executions }, { data: stats }] = await Promise.all([
+      supabase
+        .from("search_executions")
+        .select("search_id, id, status, finished_at, created_at")
+        .in("search_id", searchIds)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("price_stats_daily")
+        .select("search_id, stats_date, min_price_eur, avg_price_eur")
+        .in("search_id", searchIds)
+        .gte("stats_date", isoDaysAgo(30)),
+    ]);
+
     for (const exec of (executions ?? []) as ExecutionRow[]) {
       if (!lastExecution.has(exec.search_id))
         lastExecution.set(exec.search_id, exec);
@@ -83,6 +107,25 @@ export default async function DashboardPage() {
       ) {
         resultsExecution.set(exec.search_id, exec.id);
       }
+    }
+
+    const avgAcc = new Map<string, { sum: number; n: number }>();
+    const weekAgo = isoDaysAgo(7);
+    for (const s of (stats ?? []) as StatRow[]) {
+      if (s.avg_price_eur != null) {
+        const acc = avgAcc.get(s.search_id) ?? { sum: 0, n: 0 };
+        acc.sum += Number(s.avg_price_eur);
+        acc.n += 1;
+        avgAcc.set(s.search_id, acc);
+      }
+      if (s.min_price_eur != null && s.stats_date >= weekAgo) {
+        const prev = trendBySearch.get(s.search_id);
+        if (prev === undefined || Number(s.min_price_eur) < prev)
+          trendBySearch.set(s.search_id, Number(s.min_price_eur));
+      }
+    }
+    for (const [id, acc] of avgAcc) {
+      baselineBySearch.set(id, acc.sum / acc.n);
     }
   }
 
@@ -102,41 +145,16 @@ export default async function DashboardPage() {
     }
   }
 
-  const baselineBySearch = new Map<string, number>();
-  const trendBySearch = new Map<string, number>();
-  if (searchIds.length > 0) {
-    const since = new Date();
-    since.setDate(since.getDate() - 30);
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const { data: stats } = await supabase
-      .from("price_stats_daily")
-      .select("search_id, stats_date, min_price_eur, avg_price_eur")
-      .in("search_id", searchIds)
-      .gte("stats_date", since.toISOString().slice(0, 10));
-
-    const avgAcc = new Map<string, { sum: number; n: number }>();
-    for (const s of (stats ?? []) as StatRow[]) {
-      if (s.avg_price_eur != null) {
-        const acc = avgAcc.get(s.search_id) ?? { sum: 0, n: 0 };
-        acc.sum += Number(s.avg_price_eur);
-        acc.n += 1;
-        avgAcc.set(s.search_id, acc);
-      }
-      if (s.min_price_eur != null && s.stats_date >= weekAgo.toISOString().slice(0, 10)) {
-        const prev = trendBySearch.get(s.search_id);
-        if (prev === undefined || Number(s.min_price_eur) < prev)
-          trendBySearch.set(s.search_id, Number(s.min_price_eur));
-      }
-    }
-    for (const [id, acc] of avgAcc) {
-      baselineBySearch.set(id, acc.sum / acc.n);
-    }
-  }
-
-  const cheapestBySearch = new Map<string, number>();
+  // Cheapest option per search with the currency it was quoted in: a search
+  // whose sources quote different currencies shows the profile-currency one
+  // and never an assumed EUR.
+  const cheapestBySearch = new Map<string, RankableDeal>();
   for (const [id, list] of optionsBySearch) {
-    if (list.length > 0) cheapestBySearch.set(id, Number(list[0].price_eur));
+    const cheapest = cheapestIn(
+      list.map((opt) => ({ price: Number(opt.price_eur), currency: opt.currency })),
+      profileCurrency,
+    );
+    if (cheapest) cheapestBySearch.set(id, cheapest);
   }
 
   const deals: DealType[] = (searches ?? [])
@@ -165,19 +183,17 @@ export default async function DashboardPage() {
             executedAt,
           }) satisfies DealType,
       );
-    })
-    .sort((a, b) => a.price - b.price);
+    });
+
+  // Amounts in different currencies are never compared: the profile-currency
+  // group leads and only that group earns the global "best opportunity" badge.
+  const rankedDeals = rankDeals(deals, profileCurrency);
+  const featuredIsHonest = topIsProfileCurrency(rankedDeals, profileCurrency);
 
   const trendRows = (searches ?? [])
     .filter((s) => trendBySearch.has(s.id))
     .map((s) => ({ search: s, min: trendBySearch.get(s.id) as number }))
     .sort((a, b) => a.min - b.min);
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("currency")
-    .eq("id", user.id)
-    .single();
 
   return (
     <main className="mx-auto flex w-full max-w-[1420px] flex-col gap-8 px-6 pb-16">
@@ -198,10 +214,15 @@ export default async function DashboardPage() {
             lastExecution: lastExecution.get(s.id) ?? null,
             bestPrice: cheapestBySearch.get(s.id) ?? null,
           }))}
+          currency={profileCurrency}
         />
       </section>
 
-      <FeaturedDeals deals={deals} searchCount={searchIds.length} />
+      <FeaturedDeals
+        deals={rankedDeals}
+        searchCount={searchIds.length}
+        featuredIsHonest={featuredIsHonest}
+      />
 
       <section className="grid gap-4 md:grid-cols-3">
         <Card className="md:col-span-2">
@@ -217,21 +238,28 @@ export default async function DashboardPage() {
                 Todavía no hay datos. Ejecuta una búsqueda para ver tendencias.
               </p>
             ) : (
-              <ul className="grid gap-2 sm:grid-cols-2">
-                {trendRows.map(({ search, min }) => (
-                  <li
-                    key={search.id}
-                    className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
-                  >
-                    <span className="font-medium text-brand-dark">
-                      {search.origin} → {search.destination}
-                    </span>
-                    <span className="text-muted-foreground">
-                      desde {min.toFixed(2)} {profile?.currency ?? "EUR"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <>
+                {profileCurrency !== "EUR" && (
+                  <p className="mb-2 text-xs text-muted-foreground">
+                    Histórico disponible en EUR.
+                  </p>
+                )}
+                <ul className="grid gap-2 sm:grid-cols-2">
+                  {trendRows.map(({ search, min }) => (
+                    <li
+                      key={search.id}
+                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium text-brand-dark">
+                        {search.origin} → {search.destination}
+                      </span>
+                      <span className="text-muted-foreground">
+                        desde {min.toFixed(2)} EUR
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </CardContent>
         </Card>
