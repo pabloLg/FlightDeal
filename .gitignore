@@ -8,3 +8,11 @@ app/dev-server.*.log
 /node_modules/
 /package-lock.json
 /package.json
+
+# Design exports (local artifacts - Pencil/ChatGPT)
+design-exports/
+scripts/
+# Local archive (archivados de exportaciones, nunca commitear)
+.archive/
+# Next.js build output (dev + prod)
+/.next/
