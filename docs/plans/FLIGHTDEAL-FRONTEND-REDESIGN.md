@@ -167,6 +167,25 @@ Cada PR pasa `lint`, `typecheck`, `test` y `build` en local antes de subirse.
 
 - Sin FX: cambiar la moneda del perfil con datos ya guardados mezcla monedas en el histórico (mismo techo que F9).
 - El modelo guarda los precios en columnas `*_eur`: el histórico se muestra en EUR con aviso cuando el perfil use otra moneda.
+- `alert_dispatches` no tiene columna de moneda: precio y umbral de alertas se muestran en EUR, que es como se evalúan.
 - No hay edición de alertas como feature nueva: la condición se muestra y se edita desde Mis búsquedas.
 - La variable `SERPAPI_API_KEY` no permite una verificación de conexión gratuita; solo Ignav tiene health check gratis.
+- Las oportunidades se ordenan por moneda + precio; no existe puntuación de "mejor oferta" (sin definición de producto).
 - `gh` requiere autenticación interactiva en esta máquina; sin ella los PR se crean desde la web de GitHub.
+
+## 14. Estado de ejecución (2026-10-09)
+
+Ramas subidas a GitHub, pendientes de abrir PR (o de `gh auth login` para crearlos desde aquí):
+
+| PR | Rama | Contenido |
+|---|---|---|
+| 1 | `docs/redesign-plan` | Este documento |
+| 2 | `fix/data-honesty-p1-p2-p3` | P1/P2/P3 + tests |
+| 3 | `feat/design-foundations` | Tokens + 6 componentes UI + nav + foco + reduced-motion |
+| 4 | `feat/dashboard-opportunities` | Orden, alertas recientes, hero compacto |
+| 5 | `feat/results-filters` | Filtros accesibles en móvil, cabecera honesta, badges |
+| 6 | `feat/history-alerts` | Rango min–max, aviso EUR, condición explicada |
+| 7 | `feat/searches-forms` | Ejecución por tarjeta + cold start, form de edición completo |
+| 8 | `chore/polish` | Foco en ajustes, nota del tema oscuro inerte, nav a 375 px |
+
+La rama 8 corrige que el nav de 5 entradas se cortaba a 375 px (`flex-wrap`).
