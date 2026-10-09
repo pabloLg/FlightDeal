@@ -12,8 +12,9 @@ import {
   type SearchFormState,
 } from "@/app/actions/search";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Bell, Info, Plane } from "lucide-react";
+import { Bell, Plane } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -62,22 +63,15 @@ const DEGRADED_HELP =
 function StatusPill({ status }: { status: string }) {
   const degraded = status === "degraded";
   return (
-    <span
+    <Badge
+      variant={
+        degraded ? "warn" : status === "failed" ? "danger" : "ok"
+      }
+      dot
       title={degraded ? DEGRADED_HELP : undefined}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${
-        degraded
-          ? "cursor-help bg-opportunity/10 text-opportunity"
-          : status === "failed"
-            ? "bg-destructive/10 text-destructive"
-            : "bg-savings/10 text-savings"
-      }`}
     >
-      <span className="size-1.5 rounded-full bg-current" aria-hidden />
       {statusLabel(status)}
-      {degraded && (
-        <Info className="size-3.5" aria-label={DEGRADED_HELP} />
-      )}
-    </span>
+    </Badge>
   );
 }
 
@@ -154,6 +148,13 @@ export function SearchesView({
           {error}
         </p>
       )}
+      {runningId !== null && (
+        <p className="rounded-lg bg-sky px-3 py-2 text-sm text-brand-dark">
+          Buscando precios en todas las fuentes. La primera ejecución en frío
+          puede tardar hasta unos 30 s; los precios que ves siguen siendo los
+          últimos observados.
+        </p>
+      )}
       <div className="grid gap-4">
         {searches.map((search) => {
           const liveStatus =
@@ -165,6 +166,11 @@ export function SearchesView({
             threshold != null &&
             search.bestPrice != null &&
             search.bestPrice.price <= threshold;
+          // Only this card's own actions are blocked by its own run. A run on
+          // another route must not disable the whole list, which used to make
+          // the dashboard feel frozen for a minute.
+          const thisRunning = runningId === search.id;
+          const anyRunning = runningId !== null;
 
           return (
             <Card key={search.id} size="sm">
@@ -245,7 +251,7 @@ export function SearchesView({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={runningId !== null}
+                    disabled={thisRunning}
                     onClick={() =>
                       setEditingId(editingId === search.id ? null : search.id)
                     }
@@ -255,7 +261,7 @@ export function SearchesView({
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={runningId !== null}
+                    disabled={thisRunning}
                     onClick={() => onToggle(search.id, !search.enabled)}
                   >
                     {search.enabled ? "Desactivar" : "Activar"}
@@ -263,17 +269,17 @@ export function SearchesView({
                   <Button
                     size="sm"
                     variant="destructive"
-                    disabled={runningId !== null}
+                    disabled={thisRunning}
                     onClick={() => onDelete(search.id)}
                   >
                     Eliminar
                   </Button>
                   <Button
                     size="sm"
-                    disabled={runningId !== null || !search.enabled}
+                    disabled={anyRunning || !search.enabled}
                     onClick={() => runSearch(search.id)}
                   >
-                    {runningId === search.id ? "Ejecutando…" : "Ejecutar"}
+                    {thisRunning ? "Ejecutando…" : "Ejecutar"}
                   </Button>
                 </div>
               </div>
@@ -341,83 +347,135 @@ function EditSearchForm({
   }, [state, pending, onDone]);
 
   return (
-    <form action={formAction} className="grid gap-3 sm:grid-cols-4">
-      <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <input
-          checked={roundTrip}
-          onChange={(e) => setRoundTrip(e.target.checked)}
-          type="checkbox"
+    <form action={formAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`origin-${search.id}`}>Origen</Label>
+        <Input
+          id={`origin-${search.id}`}
+          name="origin"
+          maxLength={3}
+          required
+          defaultValue={search.origin}
         />
-        Ida y vuelta
-      </label>
-      <Label htmlFor={`origin-${search.id}`} className="sr-only">
-        Origen
-      </Label>
-      <Input id={`origin-${search.id}`} name="origin" defaultValue={search.origin} />
-      <Label htmlFor={`destination-${search.id}`} className="sr-only">
-        Destino
-      </Label>
-      <Input
-        id={`destination-${search.id}`}
-        name="destination"
-        defaultValue={search.destination}
-      />
-      <Label htmlFor={`depart-${search.id}`} className="sr-only">
-        Salida
-      </Label>
-      <Input
-        id={`depart-${search.id}`}
-        name="depart_date"
-        type="date"
-        defaultValue={search.depart_date ?? ""}
-      />
-      <Label htmlFor={`return-${search.id}`} className="sr-only">
-        Regreso
-      </Label>
-      <Input
-        id={`return-${search.id}`}
-        name="return_date"
-        type="date"
-        disabled={!roundTrip}
-        defaultValue={search.return_date ?? ""}
-      />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`destination-${search.id}`}>Destino</Label>
+        <Input
+          id={`destination-${search.id}`}
+          name="destination"
+          maxLength={3}
+          required
+          defaultValue={search.destination}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`depart-${search.id}`}>Salida</Label>
+        <Input
+          id={`depart-${search.id}`}
+          name="depart_date"
+          type="date"
+          defaultValue={search.depart_date ?? ""}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`return-${search.id}`}>Regreso</Label>
+        <Input
+          id={`return-${search.id}`}
+          name="return_date"
+          type="date"
+          disabled={!roundTrip}
+          defaultValue={search.return_date ?? ""}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`cabin-${search.id}`}>Cabina</Label>
+        <select
+          id={`cabin-${search.id}`}
+          name="cabin_class"
+          className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          defaultValue={search.cabin_class}
+        >
+          <option value="economy">Económica</option>
+          <option value="premium_economy">Premium economy</option>
+          <option value="business">Business</option>
+          <option value="first">Primera</option>
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`stops-${search.id}`}>Escalas</Label>
+        <select
+          id={`stops-${search.id}`}
+          name="stops"
+          className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          defaultValue={search.stops}
+        >
+          <option value="any">Cualquiera</option>
+          <option value="non_stop">Solo directos</option>
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`adults-${search.id}`}>Pasajeros</Label>
+        <Input
+          id={`adults-${search.id}`}
+          name="adults"
+          type="number"
+          min={1}
+          max={9}
+          defaultValue={search.adults}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`flex-${search.id}`}>Flexibilidad (± días)</Label>
+        <Input
+          id={`flex-${search.id}`}
+          name="date_flex_days"
+          type="number"
+          min={0}
+          max={21}
+          defaultValue={search.date_flex_days}
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`alert-${search.id}`}>Avisarme por debajo de</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            id={`alert-${search.id}`}
+            name="alert_threshold_eur"
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="sin umbral"
+            defaultValue={search.alert_threshold_eur ?? ""}
+          />
+          <span className="text-sm text-muted-foreground">EUR</span>
+        </div>
+      </div>
+
+      <div className="flex items-end gap-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            checked={roundTrip}
+            onChange={(e) => setRoundTrip(e.target.checked)}
+            type="checkbox"
+          />
+          Ida y vuelta
+        </label>
+      </div>
       <input
         name="trip_type"
         type="hidden"
         value={roundTrip ? "round_trip" : "one_way"}
       />
-      <Input name="cabin_class" type="hidden" value={search.cabin_class} />
-      <Input name="stops" type="hidden" value={search.stops} />
-      <Input name="adults" type="hidden" value={search.adults} />
-      <Label htmlFor={`flex-${search.id}`} className="sr-only">
-        Flexibilidad (± días)
-      </Label>
-      <Input
-        id={`flex-${search.id}`}
-        name="date_flex_days"
-        type="number"
-        min={0}
-        max={21}
-        placeholder="±días flex"
-        defaultValue={search.date_flex_days}
-      />
-      <Label htmlFor={`alert-${search.id}`} className="sr-only">
-        Umbral de alerta (EUR)
-      </Label>
-      <Input
-        id={`alert-${search.id}`}
-        name="alert_threshold_eur"
-        type="number"
-        min={0}
-        step="0.01"
-        placeholder="Umbral (EUR)"
-        defaultValue={search.alert_threshold_eur ?? ""}
-      />
-      <Button type="submit" size="sm" disabled={pending || busy}>
-        Guardar
-      </Button>
+
+      <div className="flex items-end sm:col-span-2 lg:col-span-4">
+        <Button type="submit" size="sm" disabled={pending || busy}>
+          Guardar
+        </Button>
+      </div>
       {state?.error && (
-        <p className="text-sm text-destructive" role="alert">
+        <p className="text-sm text-destructive sm:col-span-2 lg:col-span-4" role="alert">
           {state.error}
         </p>
       )}
