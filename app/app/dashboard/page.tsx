@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { RecentAlertsCard } from "@/components/alerts/recent-alerts";
 import { type Deal as DealType } from "@/components/deals/deal-card";
 import { FeaturedDeals } from "@/components/deals/featured-deals";
 import { SearchHero } from "@/components/search/search-hero";
@@ -53,6 +54,24 @@ type StatRow = {
   stats_date: string;
   min_price_eur: number | null;
   avg_price_eur: number | null;
+};
+
+// Shape of a dispatch joined to its alert edge and, through it, its search.
+// Only used to label the row with a route; nothing here is written back.
+type DispatchRow = {
+  id: string;
+  price_eur: number;
+  status: "dispatched" | "delivered" | "failed";
+  dispatched_at: string;
+  alerts_edge:
+    | {
+        threshold_eur: number | null;
+        searches: { origin: string; destination: string } | { origin: string; destination: string }[];
+      }
+    | {
+        threshold_eur: number | null;
+        searches: { origin: string; destination: string } | { origin: string; destination: string }[];
+      }[];
 };
 
 export default async function DashboardPage() {
@@ -195,19 +214,62 @@ export default async function DashboardPage() {
     .map((s) => ({ search: s, min: trendBySearch.get(s.id) as number }))
     .sort((a, b) => a.min - b.min);
 
+  // Recent alerts, scoped to this profile by RLS. The join to searches exists
+  // only to label each dispatch with its route; there is no second source of
+  // truth for alerts. Dispatches store price_eur: alerts are evaluated
+  // against a EUR threshold, so both numbers are shown in EUR.
+  const { data: dispatches } = await supabase
+    .from("alert_dispatches")
+    .select(
+      "id, price_eur, status, dispatched_at, alerts_edge!inner(threshold_eur, searches!inner(origin, destination))",
+    )
+    .order("dispatched_at", { ascending: false })
+    .limit(8);
+
+  const recentAlerts = ((dispatches ?? []) as unknown as DispatchRow[]).map(
+    (dispatch) => {
+      const edge = Array.isArray(dispatch.alerts_edge)
+        ? dispatch.alerts_edge[0]
+        : dispatch.alerts_edge;
+      const search = Array.isArray(edge?.searches)
+        ? edge.searches[0]
+        : edge?.searches;
+      return {
+        id: dispatch.id,
+        route: search
+          ? `${search.origin} → ${search.destination}`
+          : "Ruta desconocida",
+        thresholdEur: edge?.threshold_eur ?? null,
+        price: Number(dispatch.price_eur),
+        status: dispatch.status,
+        dispatchedAt: dispatch.dispatched_at,
+      };
+    },
+  );
+
+  const lastCheckedAt = (searches ?? [])
+    .map((s) => lastExecution.get(s.id)?.finished_at ?? null)
+    .filter((value): value is string => value != null)
+    .sort()
+    .at(-1) ?? null;
+
   return (
     <main className="mx-auto flex w-full max-w-[1420px] flex-col gap-8 px-6 pb-16">
-      <SearchHero />
+      <SearchHero
+        summary={{
+          searches: searchIds.length,
+          priced: cheapestBySearch.size,
+          lastCheckedAt,
+        }}
+      />
+
+      <FeaturedDeals
+        deals={rankedDeals}
+        searchCount={searchIds.length}
+        featuredIsHonest={featuredIsHonest}
+      />
 
       <section id="searches" className="scroll-mt-24">
-        <div className="mb-3.5">
-          <h2 className="text-xl font-bold tracking-tight text-brand-dark">
-            Mis búsquedas
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Tus rutas monitorizadas.
-          </p>
-        </div>
         <SearchesView
           searches={(searches ?? []).map((s) => ({
             ...s,
@@ -218,52 +280,52 @@ export default async function DashboardPage() {
         />
       </section>
 
-      <FeaturedDeals
-        deals={rankedDeals}
-        searchCount={searchIds.length}
-        featuredIsHonest={featuredIsHonest}
-      />
+      <div className="grid gap-4 md:grid-cols-2">
+        <section id="trends" className="scroll-mt-24">
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle>Tendencias (últimos 7 días)</CardTitle>
+              <CardDescription>
+                Mejores precios observados por ruta entre tus búsquedas.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {trendRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Todavía no hay datos. Ejecuta una búsqueda para ver tendencias.
+                </p>
+              ) : (
+                <>
+                  {profileCurrency !== "EUR" && (
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      Histórico disponible en EUR.
+                    </p>
+                  )}
+                  <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                    {trendRows.map(({ search, min }) => (
+                      <li
+                        key={search.id}
+                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                      >
+                        <span className="font-medium text-brand-dark">
+                          {search.origin} → {search.destination}
+                        </span>
+                        <span className="text-muted-foreground">
+                          desde {min.toFixed(2)} EUR
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </section>
 
-      <section id="trends" className="grid scroll-mt-24 gap-4 md:grid-cols-3">
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Tendencias (últimos 7 días)</CardTitle>
-            <CardDescription>
-              Mejores precios observados por ruta entre tus búsquedas.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {trendRows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Todavía no hay datos. Ejecuta una búsqueda para ver tendencias.
-              </p>
-            ) : (
-              <>
-                {profileCurrency !== "EUR" && (
-                  <p className="mb-2 text-xs text-muted-foreground">
-                    Histórico disponible en EUR.
-                  </p>
-                )}
-                <ul className="grid gap-2 sm:grid-cols-2">
-                  {trendRows.map(({ search, min }) => (
-                    <li
-                      key={search.id}
-                      className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
-                    >
-                      <span className="font-medium text-brand-dark">
-                        {search.origin} → {search.destination}
-                      </span>
-                      <span className="text-muted-foreground">
-                        desde {min.toFixed(2)} EUR
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </section>
+        <div className="scroll-mt-24">
+          <RecentAlertsCard alerts={recentAlerts} />
+        </div>
+      </div>
     </main>
   );
 }

@@ -1,9 +1,12 @@
 import { Flame, Plane } from "lucide-react";
 
-import { Card, CardContent } from "@/components/ui/card";
-
+import { EmptyState } from "@/components/ui/empty-state";
+import { SectionCard } from "@/components/ui/section-card";
 import { DealCard, type Deal } from "./deal-card";
 
+// The dashboard's most valuable module: the cheapest observed option of each
+// search, cheapest-first inside the profile currency group. The caller hands
+// over already-ranked deals and whether the top one is comparable.
 export function FeaturedDeals({
   deals,
   searchCount,
@@ -11,61 +14,43 @@ export function FeaturedDeals({
 }: {
   deals: Deal[];
   searchCount: number;
-  /**
-   * Whether the top deal is in the profile currency. Without it, a USD amount
-   * could outrank a EUR one and the "best opportunity" badge would compare
-   * prices that are not comparable.
-   */
   featuredIsHonest: boolean;
 }) {
   const singleSearch = searchCount === 1;
 
   return (
-    <section>
-      <div className="mb-3.5 flex items-end justify-between gap-4">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-brand-dark">
-            <Flame className="size-5 text-opportunity" />
-            {singleSearch ? "Tu mejor oportunidad" : "Oportunidades detectadas"}
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Los mejores precios encontrados en tus búsquedas.
-          </p>
-        </div>
-      </div>
-
+    <SectionCard
+      id="opportunities"
+      icon={<Flame className="size-5 text-opportunity" aria-hidden />}
+      title={singleSearch ? "Tu mejor oportunidad" : "Oportunidades detectadas"}
+      description={
+        singleSearch
+          ? "El mejor precio observado en tu ruta vigilada."
+          : "El mejor precio observado en cada una de tus rutas."
+      }
+    >
       {searchCount === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
-            <Plane className="size-8 text-brand/60" aria-hidden />
-            <p className="font-semibold text-brand-dark">
-              ☁️ Estamos esperando tus primeros resultados
-            </p>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Crea tu primera búsqueda arriba y aquí aparecerán las
-              oportunidades que encontremos.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={<Plane className="size-8" aria-hidden />}
+          title="☁️ Estamos esperando tus primeros resultados"
+          body="Crea tu primera búsqueda arriba y aquí aparecerán las oportunidades que encontremos."
+        />
       ) : deals.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-8 text-center">
-            <p className="font-semibold text-brand-dark">
-              Todavía no hay precios
-            </p>
-            <p className="max-w-md text-sm text-muted-foreground">
-              Tus rutas están monitorizadas. En cuanto se ejecute una búsqueda
-              verás aquí los precios encontrados.
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          title="Todavía no hay precios"
+          body="Tus rutas están monitorizadas. En cuanto se ejecute una búsqueda verás aquí los precios encontrados."
+        />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {deals.map((deal, i) => (
-            <DealCard key={deal.optionId} deal={deal} featured={i === 0 && featuredIsHonest} />
+            <DealCard
+              key={deal.optionId}
+              deal={deal}
+              featured={i === 0 && featuredIsHonest}
+            />
           ))}
         </div>
       )}
-    </section>
+    </SectionCard>
   );
 }
