@@ -1,6 +1,6 @@
 import { Clock } from "lucide-react";
 
-import { fmtFreshness } from "@/components/deals/deal-card";
+import { fmtFreshness } from "@/lib/flight-display";
 import { cn } from "cn";
 
 // Prices older than a day may already be gone: the search cron runs daily.

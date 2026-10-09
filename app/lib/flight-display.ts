@@ -8,6 +8,20 @@ export function fmtDuration(min: number | null | undefined): string {
   return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
+const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
+
+// "hace 2 h" / "hace 3 días", or null when there is no timestamp. Relative on
+// purpose: an absolute date says nothing about how stale a price is.
+export function fmtFreshness(iso: string | null): string | null {
+  if (!iso) return null;
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!Number.isFinite(min)) return null;
+  if (Math.abs(min) < 60) return rtf.format(-min, "minute");
+  const hours = Math.round(min / 60);
+  if (Math.abs(hours) < 48) return rtf.format(-hours, "hour");
+  return rtf.format(-Math.round(hours / 24), "day");
+}
+
 export type BookingSearch = {
   origin: string;
   destination: string;

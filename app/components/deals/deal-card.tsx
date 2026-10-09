@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Flame } from "lucide-react";
 
+import { FreshnessChip } from "@/components/ui/freshness-chip";
+import { PriceTag } from "@/components/ui/price-tag";
 import { buildBookingUrl, fmtDuration } from "@/lib/flight-display";
 import type {
   CabinClass,
@@ -59,18 +61,6 @@ function stopsLabel(deal: Deal): string | null {
   return n === 0 ? "Directo" : `${n} escala${n > 1 ? "s" : ""}`;
 }
 
-const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
-
-export function fmtFreshness(iso: string | null): string | null {
-  if (!iso) return null;
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (!Number.isFinite(min)) return null;
-  if (Math.abs(min) < 60) return rtf.format(-min, "minute");
-  const hours = Math.round(min / 60);
-  if (Math.abs(hours) < 48) return rtf.format(-hours, "hour");
-  return rtf.format(-Math.round(hours / 24), "day");
-}
-
 export function DealCard({ deal, featured }: { deal: Deal; featured?: boolean }) {
   const pct = savingsPct(deal);
   const dates =
@@ -103,25 +93,27 @@ export function DealCard({ deal, featured }: { deal: Deal; featured?: boolean })
             {deal.adults} pax
           </div>
         </div>
-        {pct != null && (
-          <span className="shrink-0 rounded-full bg-savings/10 px-2.5 py-1 text-xs font-extrabold text-savings">
-            −{pct}%
-          </span>
-        )}
-        {featured && (
-          <Flame className="size-4 text-opportunity absolute -top-1.5 -right-1.5" />
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {pct != null && (
+            <span className="shrink-0 rounded-full bg-savings/10 px-2.5 py-1 text-xs font-extrabold text-savings">
+              −{pct}%
+            </span>
+          )}
+          {featured && <Flame className="size-4 text-opportunity" aria-hidden />}
+        </div>
       </div>
 
-      <div className="mt-5 text-4xl font-extrabold tracking-tight text-ink">
-        {deal.price.toFixed(0)}{" "}
-        <span className="text-2xl">{deal.currency}</span>
-      </div>
-      <div className="text-xs text-muted-foreground">
-        {deal.baseline
-          ? `media observada · ${deal.baseline.toFixed(0)} ${deal.currency}`
-          : "mejor precio observado"}
-      </div>
+      <PriceTag
+        price={deal.price}
+        currency={deal.currency}
+        size="lg"
+        className="mt-5"
+        meta={
+          deal.baseline
+            ? `media observada · ${deal.baseline.toFixed(0)} ${deal.currency}`
+            : "mejor precio observado"
+        }
+      />
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-3.5 text-sm">
         <div className="min-w-0">
@@ -141,11 +133,9 @@ export function DealCard({ deal, featured }: { deal: Deal; featured?: boolean })
         </span>
       </div>
 
-      {fmtFreshness(deal.executedAt) && (
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          Comprobado {fmtFreshness(deal.executedAt)}
-        </p>
-      )}
+      <div className="mt-2">
+        <FreshnessChip checkedAt={deal.executedAt} />
+      </div>
 
       <div className="mt-3 flex gap-2">
         {bookingUrl ? (
@@ -158,7 +148,7 @@ export function DealCard({ deal, featured }: { deal: Deal; featured?: boolean })
             Ver oferta →
           </a>
         ) : (
-          <span className="flex-1 text-sm text-muted-foreground rounded-lg bg-muted p-2.5">
+          <span className="flex-1 rounded-lg bg-muted p-2.5 text-sm text-muted-foreground">
             Oferta encontrada
           </span>
         )}
