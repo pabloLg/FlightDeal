@@ -224,7 +224,7 @@ export default async function DashboardPage() {
         featuredIsHonest={featuredIsHonest}
       />
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section id="trends" className="grid scroll-mt-24 gap-4 md:grid-cols-3">
         <Card className="md:col-span-2">
           <CardHeader>
             <CardTitle>Tendencias (últimos 7 días)</CardTitle>
