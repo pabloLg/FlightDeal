@@ -1,6 +1,8 @@
 import { Flame, Plane } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { PriceTag } from "@/components/ui/price-tag";
 import type {
   FlightLeg,
   FlightOptionBookingLink,
@@ -131,8 +133,8 @@ export function FlightDealCard({
               {carriers.join(", ") || "—"}
             </div>
             {sourceLabel(deal.source) ? (
-              <div className="text-[11px] font-medium text-muted-foreground">
-                vía {sourceLabel(deal.source)}
+              <div className="mt-1">
+                <Badge variant="info">vía {sourceLabel(deal.source)}</Badge>
               </div>
             ) : null}
             {numbers.length > 0 && (
@@ -147,15 +149,12 @@ export function FlightDealCard({
           </div>
           <div className="flex items-center gap-2">
             {isBestPrice && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-opportunity/10 px-2 py-0.5 text-xs font-bold text-opportunity">
+              <Badge variant="warn" className="gap-1">
                 <Flame className="size-3.5" aria-hidden />
                 Mejor precio
-              </span>
+              </Badge>
             )}
-            <span className="text-2xl font-extrabold tabular-nums text-ink">
-              {deal.price.toFixed(0)}{" "}
-              <span className="text-base">{deal.currency}</span>
-            </span>
+            <PriceTag price={deal.price} currency={deal.currency} size="md" />
           </div>
         </div>
 
