@@ -3,8 +3,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { FlightDealCard } from "@/components/deals/flight-deal-card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterPanel } from "@/components/ui/filter-panel";
+import { FreshnessChip } from "@/components/ui/freshness-chip";
 import { createClient } from "@/lib/supabase/server";
 import { buildBookingUrl } from "@/lib/flight-display";
 import {
@@ -261,13 +265,13 @@ export default async function SearchResultsPage({
   const dispatchRows = (dispatches ?? []) as DispatchRow[];
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6">
+    <main className="mx-auto flex w-full max-w-[1420px] flex-1 flex-col gap-6 px-6 pb-16">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-brand-dark">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-extrabold tracking-tight text-brand-dark">
             {search.origin} → {search.destination}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {allRows.length} opciones · búsqueda completada el{" "}
             {execution.finished_at
               ? new Date(execution.finished_at).toLocaleDateString("es-ES")
@@ -276,15 +280,24 @@ export default async function SearchResultsPage({
               search.cabin_class === "economy" ? "economy" : search.cabin_class
             }`}
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <FreshnessChip checkedAt={execution.finished_at} />
+            {search.alert_threshold_eur != null ? (
+              <Badge variant="info">
+                Alerta: avisar por debajo de{" "}
+                {search.alert_threshold_eur.toFixed(0)} EUR
+              </Badge>
+            ) : null}
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          {search.alert_threshold_eur != null ? (
-            <span className="rounded-lg bg-sky px-3 py-2 text-sm font-medium text-brand-dark">
-              Alerta: avisar por debajo de{" "}
-              {search.alert_threshold_eur.toFixed(0)} EUR · se edita en Mis
-              búsquedas
-            </span>
-          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            render={<Link href="/dashboard#searches" />}
+          >
+            Editar búsqueda
+          </Button>
           <Button variant="ghost" render={<Link href="/dashboard" />}>
             Volver
           </Button>
@@ -337,20 +350,112 @@ export default async function SearchResultsPage({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[1fr_240px]">
+        <div className="grid gap-4 lg:grid-cols-[1fr_240px] lg:gap-6">
+          {/* Filters first in the source: above the cards on mobile, sticky
+              beside them on desktop. */}
+          <div className="order-first lg:order-last">
+            <FilterPanel
+              footer={
+                <>
+                  {filtered && (
+                    <Link
+                      className="text-center text-xs text-muted-foreground underline"
+                      href={`/searches/${id}`}
+                    >
+                      Quitar filtros
+                    </Link>
+                  )}
+                  {rows.length !== allRows.length && (
+                    <p className="text-xs text-muted-foreground">
+                      {rows.length} de {allRows.length} opciones
+                    </p>
+                  )}
+                </>
+              }
+            >
+              <form className="flex flex-col gap-3">
+                <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                  Precio máximo ({currency})
+                  <input
+                    className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                    defaultValue={filters.maxPrice ?? ""}
+                    min={0}
+                    name="precio"
+                    placeholder="sin límite"
+                    step="0.01"
+                    type="number"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                  Duración máxima (min)
+                  <input
+                    className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                    defaultValue={filters.maxDuration ?? ""}
+                    min={0}
+                    name="dur"
+                    placeholder="sin límite"
+                    type="number"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    name="directo"
+                    type="checkbox"
+                    value="1"
+                    defaultChecked={filters.nonStopOnly}
+                  />
+                  Solo directos
+                </label>
+                {airlines.length > 1 && (
+                  <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                    Aerolínea
+                    <select
+                      className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                      defaultValue={filters.airline ?? ""}
+                      name="aerolinea"
+                    >
+                      <option value="">Todas</option>
+                      {airlines.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                  Ordenar por
+                  <select
+                    className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                    defaultValue={filters.sort}
+                    name="ord"
+                  >
+                    <option value="price">Más barato</option>
+                    <option value="duration">Más rápido</option>
+                    <option value="stops">Menos escalas</option>
+                  </select>
+                </label>
+                <Button size="sm" type="submit">
+                  Aplicar
+                </Button>
+              </form>
+            </FilterPanel>
+          </div>
+
           <div className="flex flex-col gap-4">
             {rows.length === 0 ? (
-              <Card>
-                <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                  Ninguna opción cumple los filtros.{" "}
+              <EmptyState
+                title="Ninguna opción cumple los filtros"
+                body="Prueba a ampliar el precio o la duración máxima."
+                action={
                   <Link
-                    className="font-semibold text-brand underline"
+                    className="text-sm font-semibold text-brand underline"
                     href={`/searches/${id}`}
                   >
                     Quitar filtros
                   </Link>
-                </CardContent>
-              </Card>
+                }
+              />
             ) : (
               rows.map((option) => (
                 <FlightDealCard
@@ -370,90 +475,6 @@ export default async function SearchResultsPage({
               ))
             )}
           </div>
-
-          <aside className="lg:sticky lg:top-20 lg:self-start">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Filtrar resultados</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form className="flex flex-col gap-3">
-                  <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                    Precio máximo ({currency})
-                    <input
-                      className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-                      defaultValue={filters.maxPrice ?? ""}
-                      min={0}
-                      name="precio"
-                      placeholder="sin límite"
-                      step="0.01"
-                      type="number"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                    Duración máxima (min)
-                    <input
-                      className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-                      defaultValue={filters.maxDuration ?? ""}
-                      min={0}
-                      name="dur"
-                      placeholder="sin límite"
-                      type="number"
-                    />
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input name="directo" type="checkbox" value="1" defaultChecked={filters.nonStopOnly} />
-                    Solo directos
-                  </label>
-                  {airlines.length > 1 && (
-                    <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                      Aerolínea
-                      <select
-                        className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-                        defaultValue={filters.airline ?? ""}
-                        name="aerolinea"
-                      >
-                        <option value="">Todas</option>
-                        {airlines.map((a) => (
-                          <option key={a} value={a}>
-                            {a}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                    Ordenar por
-                    <select
-                      className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-                      defaultValue={filters.sort}
-                      name="ord"
-                    >
-                      <option value="price">Precio</option>
-                      <option value="duration">Duración</option>
-                      <option value="stops">Escalas</option>
-                    </select>
-                  </label>
-                  <Button size="sm" type="submit">
-                    Aplicar
-                  </Button>
-                  {filtered && (
-                    <Link
-                      className="text-center text-xs text-muted-foreground underline"
-                      href={`/searches/${id}`}
-                    >
-                      Quitar filtros
-                    </Link>
-                  )}
-                  {rows.length !== allRows.length && (
-                    <p className="text-xs text-muted-foreground">
-                      {rows.length} de {allRows.length} opciones
-                    </p>
-                  )}
-                </form>
-              </CardContent>
-            </Card>
-          </aside>
         </div>
       )}
 
