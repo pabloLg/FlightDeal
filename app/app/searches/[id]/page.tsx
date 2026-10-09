@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { AlertHistory, PriceHistory, type DispatchRow, type PriceStatRow } from "@/components/deals/price-history";
 import { FlightDealCard } from "@/components/deals/flight-deal-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,154 +24,6 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Resultados | FlightDeal",
 };
-
-type PriceStatRow = {
-  stats_date: string;
-  min_price_eur: number;
-  max_price_eur: number;
-  avg_price_eur: number;
-  observations: number;
-};
-
-type DispatchRow = {
-  id: string;
-  price_eur: number;
-  status: "dispatched" | "delivered" | "failed";
-  dispatched_at: string;
-  alerts_edge:
-    | { threshold_eur: number; provider: string }
-    | { threshold_eur: number; provider: string }[]
-    | null;
-};
-
-function PriceHistory({
-  stats,
-  currency,
-  currentPrice,
-}: {
-  stats: PriceStatRow[];
-  currency: string;
-  currentPrice: number | null;
-}) {
-  const max = Math.max(...stats.map((s) => s.max_price_eur));
-  const hasHistory = stats.some((s) => s.observations > 0);
-  const habitual =
-    stats.reduce((acc, s) => acc + s.avg_price_eur, 0) / (stats.length || 1);
-  const diff =
-    currentPrice != null && habitual > 0
-      ? Math.round((1 - currentPrice / habitual) * 100)
-      : null;
-
-  return (
-    <div className="flex flex-col gap-2">
-      {currentPrice != null && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-          <span>
-            <span className="font-medium">Precio actual:</span>{" "}
-            {currentPrice.toFixed(2)} {currency}
-          </span>
-          {diff != null &&
-            (diff >= 0 ? (
-              <span className="font-semibold text-savings">
-                −{diff}% frente al habitual
-              </span>
-            ) : (
-              <span className="font-semibold text-opportunity">
-                +{Math.abs(diff)}% frente al habitual
-              </span>
-            ))}
-        </div>
-      )}
-
-      {stats.map((s) => {
-        const barH = Math.max(6, Math.round((s.min_price_eur / max) * 100));
-        return (
-          <div key={s.stats_date} className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="w-24 shrink-0">
-              {new Date(s.stats_date).toLocaleDateString("es-ES")}
-            </span>
-            <div className="flex h-16 flex-1 items-end gap-1">
-              <div
-                className="w-4 rounded-t bg-primary"
-                title={`mín ${s.min_price_eur.toFixed(2)} ${currency}`}
-                style={{ height: `${barH}%` }}
-              />
-            </div>
-            <span className="w-28 shrink-0 text-right tabular-nums">
-              {s.min_price_eur.toFixed(2)} – {s.max_price_eur.toFixed(2)} {currency}
-            </span>
-            <span className="w-24 shrink-0 text-right text-muted-foreground tabular-nums">
-              media {s.avg_price_eur.toFixed(2)} {currency}
-            </span>
-          </div>
-        );
-      })}
-      {!hasHistory && (
-        <p className="text-xs text-muted-foreground">
-          Aún no hay datos históricos. Los agregados diarios (mínimo, máximo y media)
-          aparecerán tras las próximas ejecuciones de esta búsqueda.
-        </p>
-      )}
-    </div>
-  );
-}
-
-/** Prices older than a day may be gone; the search cron runs daily at 06:00. */
-function isStale(finishedAt: string | null): boolean {
-  return (
-    finishedAt != null &&
-    Date.now() - new Date(finishedAt).getTime() > 24 * 60 * 60 * 1000
-  );
-}
-
-function edgeOf(
-  d: DispatchRow,
-): { threshold_eur: number; provider: string } | undefined {
-  if (!d.alerts_edge) return undefined;
-  return Array.isArray(d.alerts_edge) ? d.alerts_edge[0] : d.alerts_edge;
-}
-
-function AlertHistory({
-  dispatches,
-  currency,
-}: {
-  dispatches: DispatchRow[];
-  currency: string;
-}) {
-  const statusLabel: Record<DispatchRow["status"], string> = {
-    dispatched: "Enviada",
-    delivered: "Entregada",
-    failed: "Fallida",
-  };
-
-  return (
-    <div className="flex flex-col gap-2">
-      {dispatches.map((d) => {
-        const edge = edgeOf(d);
-        return (
-          <div
-            key={d.id}
-            className="flex items-center justify-between gap-3 text-sm"
-          >
-            <span className="text-muted-foreground">
-              {new Date(d.dispatched_at).toLocaleString("es-ES")}
-            </span>
-            <span className="font-medium tabular-nums">
-              {d.price_eur.toFixed(2)} {currency}
-              {edge ? (
-                <span className="text-muted-foreground">
-                  {" "}
-                  · umbral {edge.threshold_eur.toFixed(2)} {currency}
-                </span>
-              ) : null}
-            </span>
-            <span className="w-24 text-right">{statusLabel[d.status]}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export default async function SearchResultsPage({
   params,
@@ -232,7 +85,6 @@ export default async function SearchResultsPage({
     filters.nonStopOnly ||
     filters.airline != null;
   const airlines = airlineOptions(allRows);
-  const stale = isStale(execution.finished_at);
   const bookingUrl = buildBookingUrl({
     origin: search.origin,
     destination: search.destination,
@@ -303,13 +155,6 @@ export default async function SearchResultsPage({
           </Button>
         </div>
       </div>
-
-      {stale && !failed && (
-        <p className="rounded-lg bg-opportunity/10 px-3 py-2 text-sm text-opportunity">
-          Estos precios son de hace más de 24 h y pueden haber cambiado. Ejecuta la
-          búsqueda de nuevo para refrescarlos.
-        </p>
-      )}
 
       {failed ? (
         <Card>
@@ -511,7 +356,10 @@ export default async function SearchResultsPage({
                 : "Configura un umbral en Mis búsquedas para recibir avisos."}
             </p>
           ) : (
-            <AlertHistory dispatches={dispatchRows} currency={currency} />
+            <AlertHistory
+              dispatches={dispatchRows}
+              thresholdEur={search.alert_threshold_eur}
+            />
           )}
         </CardContent>
       </Card>
