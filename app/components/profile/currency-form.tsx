@@ -27,7 +27,7 @@ export function CurrencyForm({ current }: { current: string }) {
           id="currency"
           name="currency"
           defaultValue={current}
-          className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+          className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
         >
           {CURRENCIES.map((c) => (
             <option key={c} value={c}>
