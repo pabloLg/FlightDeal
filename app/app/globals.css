@@ -110,6 +110,10 @@
   --sidebar-ring: var(--brand);
 }
 
+/* Theme note: the app is light-only (white + sky blue, never black). The
+   .dark block below comes from the shadcn baseline and has no toggle, so it
+   is inert; it is kept only so the component contracts stay untouched. */
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

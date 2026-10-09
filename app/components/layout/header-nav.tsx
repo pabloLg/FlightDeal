@@ -24,7 +24,7 @@ export function HeaderNav() {
   return (
     <nav
       aria-label="Navegación principal"
-      className="order-last flex w-full items-center gap-1 md:order-none md:w-auto"
+      className="order-last flex w-full flex-wrap items-center gap-x-1 gap-y-0.5 md:order-none md:w-auto md:flex-nowrap"
     >
       {LINKS.map((link) => {
         const active = link.match(pathname);
