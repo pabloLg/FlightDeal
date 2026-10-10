@@ -4,6 +4,8 @@ samples/dashboard.png
 samples/flightdeal_design_prototype.html
 samples/login.png
 samples/resultados.png
+# Design reference images (local only, never part of the app)
+samples/
 app/dev-server.*.log
 /node_modules/
 /package-lock.json

@@ -310,6 +310,9 @@ export class IgnavFlightSource implements FlightSource {
   }
 
   // Free /api/health endpoint, unlike a paid search probe.
+  // NOTE: /api/health does NOT validate the API key (it answers 200 to
+  // anything), so it cannot be used to check a credential. See
+  // verifyCredential below for the check that actually proves a key.
   async health(): Promise<HealthStatus> {
     try {
       const response = await this.fetcher({
@@ -322,5 +325,37 @@ export class IgnavFlightSource implements FlightSource {
       const message = error instanceof Error ? error.message : String(error);
       return { ok: false, structureVersion: IGNAV_STRUCTURE_VERSION, message };
     }
+  }
+
+  /**
+   * Proves a stored or pasted credential works: an authenticated endpoint
+   * that is not a fare search (GET /api/airports). /api/health answers 200 to
+   * any string, so using it here would report a false positive on a bad key.
+   *
+   * ponytail: costs one request per call. The settings page renders a button
+   * for a deliberate user action, and every other check is a real fare search.
+   */
+  async verifyCredential(): Promise<{
+    ok: boolean;
+    reason?: "invalid_key" | "billing" | "unreachable";
+  }> {
+    let response;
+    try {
+      response = await this.fetcher({
+        url: `${IGNAV_BASE_URL}/airports?q=MAD`,
+        method: "GET",
+        headers: { "X-Api-Key": this.apiKey },
+      });
+    } catch {
+      return { ok: false, reason: "unreachable" };
+    }
+    if (response.status >= 200 && response.status < 300) return { ok: true };
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, reason: "invalid_key" };
+    }
+    // 402 billing required, 429 spend cap: the key is fine but the account
+    // cannot run searches, which is a different, actionable failure.
+    if (response.status === 402) return { ok: false, reason: "billing" };
+    return { ok: false, reason: "unreachable" };
   }
 }
