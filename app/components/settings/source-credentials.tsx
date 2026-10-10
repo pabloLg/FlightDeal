@@ -28,6 +28,7 @@ function SourceCard({
   description,
   docsUrl,
   origin,
+  hasStored,
   canTestConnection,
   testNote,
 }: {
@@ -36,6 +37,8 @@ function SourceCard({
   description: string;
   docsUrl: string;
   origin: "env" | "database" | "none";
+  /** A row exists even when the environment variable wins over it. */
+  hasStored: boolean;
   canTestConnection: boolean;
   testNote?: string;
 }) {
@@ -105,7 +108,7 @@ function SourceCard({
           ) : null}
         </form>
 
-        {origin === "database" ? (
+        {hasStored ? (
           <form action={clearAction} className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
             <input type="hidden" name="provider" value={provider} />
             <Button
@@ -118,7 +121,9 @@ function SourceCard({
               {clearing ? "Quitando…" : "Quitar la guardada"}
             </Button>
             <span className="text-xs text-muted-foreground">
-              Vuelve a usar la variable de entorno, si existe.
+              {origin === "env"
+                ? "Hay una credencial guardada, pero la variable de entorno tiene prioridad y es la que se usa."
+                : "Vuelve a usar la variable de entorno, si existe."}
             </span>
           </form>
         ) : null}
@@ -159,11 +164,14 @@ function SourceCard({
 export function SourceCredentials({
   statuses,
 }: {
-  statuses: { provider: string; origin: "env" | "database" | "none" }[];
+  statuses: {
+    provider: string;
+    origin: "env" | "database" | "none";
+    hasStored: boolean;
+  }[];
 }) {
   if (statuses.length === 0) return null;
-  const originOf = (provider: string) =>
-    statuses.find((s) => s.provider === provider)?.origin ?? "none";
+  const entryOf = (provider: string) => statuses.find((s) => s.provider === provider);
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -172,7 +180,8 @@ export function SourceCredentials({
         label="SerpAPI"
         description="Motor google_flights de SerpAPI. Cada búsqueda consume cuota (250/mes en el plan gratuito)."
         docsUrl="https://serpapi.com/dashboard"
-        origin={originOf("serpapi")}
+        origin={entryOf("serpapi")?.origin ?? "none"}
+        hasStored={entryOf("serpapi")?.hasStored ?? false}
         canTestConnection={false}
         testNote="Verificar consume cuota: cualquier llamada gasta una búsqueda. Si guardas la clave y una ejecución devuelve resultados, está correcta."
       />
@@ -181,7 +190,8 @@ export function SourceCredentials({
         label="Ignav"
         description="API de tarifas de Ignav. Devuelve ida y vuelta en la misma respuesta y tiene enlaces de reserva."
         docsUrl="https://ignav.com/dashboard"
-        origin={originOf("ignav")}
+        origin={entryOf("ignav")?.origin ?? "none"}
+        hasStored={entryOf("ignav")?.hasStored ?? false}
         canTestConnection
         testNote="Comprobar hace una petición real a Ignav: es la única forma de saber si la clave funciona (el endpoint gratuito de estado no valida la clave)."
       />
