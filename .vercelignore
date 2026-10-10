@@ -1,0 +1,23 @@
+# Vercel CLI uploads what is not ignored here. The nested app/.gitignore is
+# NOT honoured (Root Directory is app/), so app/.env was being uploaded and
+# read by the deployed functions: that leaked the real API keys and bypassed
+# the ADMIN_EMAIL allowlist. Ignore it explicitly, at the root.
+.env
+**/.env
+!**/.env.example
+
+# Local build output and caches
+.next/
+**/.next/
+node_modules/
+**/node_modules/
+
+# Local-only artefacts, never part of the deployment
+.vercel/
+.playwright-mcp/
+samples/
+scripts/
+design-exports/
+app/dev-server*.log
+out/
+coverage/
