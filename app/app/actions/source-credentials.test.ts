@@ -245,11 +245,29 @@ describe("getCredentialStatuses", () => {
     const actions = await load();
     const statuses = await actions.getCredentialStatuses();
 
-    // Nothing stored, no env: both report "none".
+    // Nothing stored, no env: both report "none" and no stored row.
     expect(statuses).toEqual([
-      { provider: "serpapi", origin: "none" },
-      { provider: "ignav", origin: "none" },
+      { provider: "serpapi", origin: "none", hasStored: false },
+      { provider: "ignav", origin: "none", hasStored: false },
     ]);
+  });
+
+  it("reports a stored row even when the environment variable wins", async () => {
+    const actions = await load();
+    await actions.saveSourceCredential({}, submit("ignav", SECRET));
+    // Mirror the database: the save wrote a row, so the reader sees it.
+    rows = upserted.map((row) => ({
+      provider: String(row.provider),
+      secret_encrypted: String(row.secret_encrypted),
+    }));
+    process.env.IGNAV_API_KEY = "ignav-from-env";
+
+    const statuses = await actions.getCredentialStatuses();
+
+    const ignav = statuses?.find((s) => s.provider === "ignav");
+    expect(ignav?.origin).toBe("env");
+    // The admin must still see (and be able to remove) the stored row.
+    expect(ignav?.hasStored).toBe(true);
   });
 
   it("prefers the environment variable and says so", async () => {

@@ -251,6 +251,25 @@ export async function readStoredCredentials(
 }
 
 /**
+ * Which providers have a stored credential, without reading or decrypting it.
+ * Needed because the environment variable wins: a stored row is then invisible
+ * in the resolved credentials, yet the admin still has to see and remove it.
+ */
+export async function readStoredCredentialProviders(
+  client: CredentialClient,
+): Promise<CredentialProvider[]> {
+  const { data, error } = await client
+    .from("source_credentials")
+    .select("provider")
+    .in("provider", CREDENTIAL_PROVIDERS);
+
+  if (error || !Array.isArray(data)) return [];
+  return (data as { provider?: unknown }[])
+    .filter((row) => row.provider === "serpapi" || row.provider === "ignav")
+    .map((row) => row.provider as CredentialProvider);
+}
+
+/**
  * Same precedence rule, but a broken admin client (or a database error) must
  * not fail a search: the app falls back to environment-only credentials,
  * which is exactly how it behaved before stored credentials existed.
