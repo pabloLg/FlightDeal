@@ -177,11 +177,36 @@ Cada PR pasa `lint`, `typecheck`, `test` y `build` en local antes de subirse.
 
 ## 14. Estado de ejecución (2026-10-10)
 
-**PRs 1–8 mergeados en `master`** (squash, en orden, con CI + preview verdes).
-**PR 9 (`feat/source-credentials`)** en curso: credenciales de fuentes cifradas.
+**PRs 1–9 mergeados en `master`** (squash, en orden, con CI + preview verdes).
+Incluye la fase de credenciales de fuentes cifradas.
 
-Revisión: los PR apilados se rebasearon sobre `master` antes de cada merge para
-evitar conflictos de GitHub.
+### Incidencia resuelta: `app/.env` se subía a Vercel (2026-10-10)
+
+Los despliegues con `vercel --prod` desde este equipo subían `app/.env` al
+build: el `.gitignore` de `app/` no lo cubre porque Vercel usa el de la raíz
+del repo (Root Directory = `app/`). Consecuencias reales:
+
+- La `SERPAPI_API_KEY` real (y `CRON_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `ADMIN_EMAIL`) viajaban en cada artefacto de despliegue.
+- El allowlist de administrador se saltaba: `ADMIN_EMAIL` del `.env` local
+  hacía pasar el guard a cualquier sesión de ese email.
+
+**Arreglo:** `.vercelignore` en la raíz del repo (ignora `.env`, `**/.env`,
+`.next`, `node_modules`, `samples/`, `scripts/`, `design-exports/`), más
+rotación de `SOURCE_SECRET_KEY` y `ADMIN_EMAIL` a variables de Vercel
+cifradas. Verificado: sin `.env`, la sección de credenciales desaparece para
+quien no sea el administrador declarado en Vercel.
+
+### Lo que el usuario debe ejecutar (pendiente)
+
+1. En Supabase → SQL Editor, aplicar
+   `app/supabase/migrations/20261010000000_source_credentials.sql`.
+2. Nada más: `SOURCE_SECRET_KEY` y `ADMIN_EMAIL` ya están en Vercel.
+
+### Lección
+
+Si el CLI de Vercel se usa desde local, `.vercelignore` es la única barrera
+fiable para los secretos: el `.gitignore` anidado no se aplica.
 
 | PR | Rama | Contenido |
 |---|---|---|
