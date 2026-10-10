@@ -169,13 +169,19 @@ Cada PR pasa `lint`, `typecheck`, `test` y `build` en local antes de subirse.
 - El modelo guarda los precios en columnas `*_eur`: el histórico se muestra en EUR con aviso cuando el perfil use otra moneda.
 - `alert_dispatches` no tiene columna de moneda: precio y umbral de alertas se muestran en EUR, que es como se evalúan.
 - No hay edición de alertas como feature nueva: la condición se muestra y se edita desde Mis búsquedas.
-- La variable `SERPAPI_API_KEY` no permite una verificación de conexión gratuita; solo Ignav tiene health check gratis.
+- **Credenciales de fuentes (fase 9):** el `/api/health` de Ignav **no valida la clave** (responde 200 a cualquier cadena), así que "Probar conexión" usa `/api/airports` y **consume una petición real** de la cuota. SerpAPI no tiene ninguna comprobación posible sin gastar cuota.
+- **Clave maestra:** si `SOURCE_SECRET_KEY` se pierde o cambia, las credenciales guardadas quedan **ilegibles** (no hay recuperación: hay que volver a guardarlas). Procedimiento documentado: rotar la clave y guardar de nuevo cada credencial.
+- La variable de entorno **siempre gana** sobre la guardada en la aplicación; quitar la fila de la BD revierte al comportamiento anterior.
 - Las oportunidades se ordenan por moneda + precio; no existe puntuación de "mejor oferta" (sin definición de producto).
 - `gh` requiere autenticación interactiva en esta máquina; sin ella los PR se crean desde la web de GitHub.
 
-## 14. Estado de ejecución (2026-10-09)
+## 14. Estado de ejecución (2026-10-10)
 
-Ramas subidas a GitHub, pendientes de abrir PR (o de `gh auth login` para crearlos desde aquí):
+**PRs 1–8 mergeados en `master`** (squash, en orden, con CI + preview verdes).
+**PR 9 (`feat/source-credentials`)** en curso: credenciales de fuentes cifradas.
+
+Revisión: los PR apilados se rebasearon sobre `master` antes de cada merge para
+evitar conflictos de GitHub.
 
 | PR | Rama | Contenido |
 |---|---|---|
@@ -187,5 +193,6 @@ Ramas subidas a GitHub, pendientes de abrir PR (o de `gh auth login` para crearl
 | 6 | `feat/history-alerts` | Rango min–max, aviso EUR, condición explicada |
 | 7 | `feat/searches-forms` | Ejecución por tarjeta + cold start, form de edición completo |
 | 8 | `chore/polish` | Foco en ajustes, nota del tema oscuro inerte, nav a 375 px |
+| 9 | `feat/source-credentials` | Credenciales cifradas (AES-256-GCM), precedencia env→BD, `/settings`, autorización admin |
 
 La rama 8 corrige que el nav de 5 entradas se cortaba a 375 px (`flex-wrap`).

@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { evaluateAlert } from "@/src/domain/alerts/evaluate-alert";
 import { resolveChain } from "@/src/domain/sources/chain";
+import { resolveSourceCredentialsSafe } from "@/src/domain/sources/credentials";
 import { searchWithSequentialMerge } from "@/src/domain/sources/chain-merge";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { FlightSearchParams } from "@/src/domain/sources/types";
 
 export type Db = SupabaseClient;
@@ -66,7 +68,16 @@ export async function runExecution(
       .update({ status: "running", started_at: new Date().toISOString() })
       .eq("id", executionId);
 
-    const { sources, skipped } = resolveChain();
+    // Credentials: environment variables first, stored values as fallback, so
+    // a key rotated from the settings page applies to manual runs, the cron
+    // and the audited retry alike. The source order and the skipped list are
+    // untouched: a provider without a key is still reported as skipped.
+    const credentials = await resolveSourceCredentialsSafe(() => createAdminClient() as never);
+    const { sources, skipped } = resolveChain({
+      FLIGHT_SOURCES: process.env.FLIGHT_SOURCES,
+      SERPAPI_API_KEY: credentials.serpapi ?? undefined,
+      IGNAV_API_KEY: credentials.ignav ?? undefined,
+    });
     const outcome = await searchWithSequentialMerge(
       sources,
       toSearchParams(search, currency),
