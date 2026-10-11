@@ -10,6 +10,7 @@ import {
   encryptSecret,
   hasMasterKey,
   parseMasterKey,
+  readStoredCredentialProviders,
   redact,
   resolveSourceCredentials,
   type CredentialProvider,
@@ -168,19 +169,35 @@ export async function testSourceConnection(
 
 /** Used by the settings page to build the cards. Never returns secrets. */
 export async function getCredentialStatuses(): Promise<
-  { provider: CredentialProvider; origin: "env" | "database" | "none" }[] | null
+  {
+    provider: CredentialProvider;
+    origin: "env" | "database" | "none";
+    /** Whether a row exists in the database, even if the env var wins. */
+    hasStored: boolean;
+  }[] | null
 > {
   const admin = await requireAdmin();
   // No redirect here: the settings page also holds the profile currency, so a
   // non-admin simply sees no credentials section (and mutations still guard).
   if (!admin) return null;
 
+  const db = createAdminClient();
   // The credential path only needs a narrow slice of the client (see
   // CredentialClient); casting keeps Supabase's huge inferred type out of it.
-  const credentials = await resolveSourceCredentials(createAdminClient() as never);
+  const credentials = await resolveSourceCredentials(db as never);
+  const stored = await readStoredCredentialProviders(db as never);
+
   return [
-    { provider: "serpapi", origin: credentials.serpapiOrigin },
-    { provider: "ignav", origin: credentials.ignavOrigin },
+    {
+      provider: "serpapi",
+      origin: credentials.serpapiOrigin,
+      hasStored: stored.includes("serpapi"),
+    },
+    {
+      provider: "ignav",
+      origin: credentials.ignavOrigin,
+      hasStored: stored.includes("ignav"),
+    },
   ];
 }
 
