@@ -24,6 +24,13 @@ import {
 type SourceTrace = {
   used: string[];
   skipped: { source: string; reason: string }[];
+  attempts: {
+    source: string;
+    degraded: boolean;
+    ms: number;
+    detail: string;
+    included: boolean;
+  }[];
 };
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -47,7 +54,29 @@ function readSourceTrace(raw: unknown): SourceTrace | null {
   const result = raw as {
     skipped?: unknown;
     aggregation?: { sourcesIncluded?: unknown };
+    attempts?: unknown;
   };
+  const attemptsRaw = Array.isArray(result.attempts) ? result.attempts : [];
+  const attempts = attemptsRaw.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const a = entry as {
+      sourceId?: unknown;
+      degraded?: unknown;
+      ms?: unknown;
+      message?: unknown;
+      included?: unknown;
+    };
+    if (typeof a.sourceId !== "string") return [];
+    return [
+      {
+        source: SOURCE_LABEL[a.sourceId] ?? a.sourceId,
+        degraded: a.degraded === true,
+        ms: typeof a.ms === "number" ? a.ms : 0,
+        detail: typeof a.message === "string" ? a.message : "",
+        included: a.included === true,
+      },
+    ];
+  });
   const skippedRaw = Array.isArray(result.skipped) ? result.skipped : [];
   const skipped = skippedRaw.flatMap((entry) => {
     if (typeof entry !== "string" || !entry.includes(":")) return [];
@@ -63,8 +92,8 @@ function readSourceTrace(raw: unknown): SourceTrace | null {
     ? (result.aggregation!.sourcesIncluded as unknown[])
     : [];
   const used = included.map((s) => SOURCE_LABEL[String(s)] ?? String(s));
-  if (used.length === 0 && skipped.length === 0) return null;
-  return { used, skipped };
+  if (used.length === 0 && skipped.length === 0 && attempts.length === 0) return null;
+  return { used, skipped, attempts };
 }
 
 function SourceTraceNote({ trace }: { trace: SourceTrace }) {
@@ -87,6 +116,24 @@ function SourceTraceNote({ trace }: { trace: SourceTrace }) {
         </>
       ) : null}{" "}
       Cada fuente usa las claves del dueño de la búsqueda.
+      {trace.attempts.length > 0 ? (
+        <>
+          {" "}
+          Detalle:{" "}
+          {trace.attempts
+            .map((a) => {
+              const estado = a.degraded
+                ? "degradada"
+                : a.included
+                  ? "con resultados"
+                  : "sin resultados";
+              const detalle = a.detail ? ` (${a.detail})` : "";
+              return `${a.source}: ${estado}${detalle}, ${(a.ms / 1000).toFixed(1)}s`;
+            })
+            .join("; ")}
+          .
+        </>
+      ) : null}
     </p>
   );
 }
