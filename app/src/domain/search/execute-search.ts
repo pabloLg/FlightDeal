@@ -127,6 +127,8 @@ export async function runExecution(
           sourceId: outcome.sourceId,
           message: result.message ?? "no_flights",
           durationMs,
+          skipped,
+          attempts: outcome.attempts,
           aggregation: outcome.aggregation,
           ...(hasReturnLegs ? { returnLegs: returnLegsBySource } : {}),
         },
