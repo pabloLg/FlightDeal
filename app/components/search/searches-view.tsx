@@ -190,6 +190,11 @@ export function SearchesView({
                     {search.date_flex_days > 0 &&
                       ` · ±${search.date_flex_days} días flexibles`}
                   </div>
+                  {search.date_flex_days > 0 && (
+                    <p className="mt-1.5 text-xs text-opportunity">
+                      Fechas flexibles: solo se consulta Google Flights.
+                    </p>
+                  )}
                   {threshold != null && (
                     <p className="mt-2 inline-flex flex-wrap items-center gap-1.5 rounded-full bg-sky px-2.5 py-1 text-xs text-brand-dark">
                       <Bell className="size-3.5" aria-hidden />

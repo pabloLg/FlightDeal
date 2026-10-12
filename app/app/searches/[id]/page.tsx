@@ -161,7 +161,7 @@ export default async function SearchResultsPage({
   const { data: search, error: searchError } = await supabase
     .from("searches")
     .select(
-      "id, origin, destination, depart_date, return_date, trip_type, cabin_class, stops, adults, alert_threshold_eur",
+      "id, origin, destination, depart_date, return_date, trip_type, cabin_class, stops, adults, alert_threshold_eur, date_flex_days",
     )
     .eq("id", id)
     .single();
@@ -264,6 +264,16 @@ export default async function SearchResultsPage({
           {sourceTrace ? (
             <div className="mt-2">
               <SourceTraceNote trace={sourceTrace} />
+            </div>
+          ) : null}
+          {search.date_flex_days > 0 ? (
+            <div className="mt-2">
+              <p className="text-xs text-opportunity">
+                Esta búsqueda tiene ±{search.date_flex_days} días de
+                flexibilidad, así que solo se consulta Google Flights: SerpAPI e
+                Ignav degradan a propósito para no buscar en silencio solo tus
+                fechas exactas.
+              </p>
             </div>
           ) : null}
         </div>
