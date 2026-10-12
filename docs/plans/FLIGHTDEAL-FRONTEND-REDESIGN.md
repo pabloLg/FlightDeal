@@ -175,10 +175,31 @@ Cada PR pasa `lint`, `typecheck`, `test` y `build` en local antes de subirse.
 - Las oportunidades se ordenan por moneda + precio; no existe puntuación de "mejor oferta" (sin definición de producto).
 - `gh` requiere autenticación interactiva en esta máquina; sin ella los PR se crean desde la web de GitHub.
 
-## 14. Estado de ejecución (2026-10-10)
+## 14. Estado de ejecución (2026-10-12)
 
-**PRs 1–9 mergeados en `master`** (squash, en orden, con CI + preview verdes).
-Incluye la fase de credenciales de fuentes cifradas.
+**PRs 1–11 mergeados en `master`.** Flujo de trabajo desde el 2026-10-12:
+rama de desarrollo `dev` (copia de `master`), los PR se mergean en `dev`
+(squash) y la integración `dev → master` (merge commit) es la que dispara el
+despliegue manual a producción.
+
+### Credenciales por usuario (2026-10-12)
+
+Cada usuario gestiona sus propias claves de SerpAPI e Ignav en `/settings`.
+Cadena de resolución por ejecución, usando el dueño de la búsqueda
+(`search.profile_id`, disponible en ejecución manual, cron y retry):
+
+1. Clave propia del dueño (`user_source_credentials`, RLS por perfil).
+2. Solo si el dueño **es** el administrador (`ADMIN_EMAIL`), la clave global
+   (`source_credentials`).
+3. En cualquier otro caso esa fuente no se consulta: la búsqueda se completa
+   con Google Flights, que no necesita clave, y **sin** estado degradado.
+
+Las variables `SERPAPI_API_KEY` / `IGNAV_API_KEY` **ya no se leen**: serían un
+fallback compartido para todos los usuarios, que es justo lo que este modelo
+evita. El pool global queda como depósito del administrador.
+
+Migración: `20261012000000_user_source_credentials.sql` (tabla + RLS owner).
+Se aplica en local; en la hospedada la aplica el usuario.
 
 ### Incidencia resuelta: `app/.env` se subía a Vercel (2026-10-10)
 
