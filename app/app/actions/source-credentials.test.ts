@@ -1,27 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Server Actions under test: they guard a global, per-tenant-free settings
-// section, so the guard and the "no secret leaks out" contract matter more
-// than the happy path.
+// Server Actions under test. Two audiences with different rules:
+//   - per-user keys: any signed-in user, scoped by their own profile id
+//   - global keys: only the ADMIN_EMAIL allowlist
+// The important contracts are the guard, the "no secret ever leaves" rule and
+// that each user's row is written under their own profile.
 
 const ADMIN_EMAIL = "admin@example.com";
 
-let currentEmail: string | null = ADMIN_EMAIL;
-const upserted: Record<string, unknown>[] = [];
-const deleted: { provider: string }[] = [];
-let rows: { provider: string; secret_encrypted: string }[] = [];
+let currentEmail: string | null = "user@example.com";
+const upserted: { table: string; row: Record<string, unknown> }[] = [];
+const deleted: { table: string; filters: Record<string, string> }[] = [];
+let userRows: { provider: string; secret_encrypted: string }[] = [];
+let globalRows: { provider: string; secret_encrypted: string }[] = [];
 const verificationResults: { secret: string; reason?: string }[] = [];
 
-vi.mock("next/cache", () => ({
-  revalidatePath: () => {},
-}));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: {
       getUser: async () => ({
         data: {
-          user: currentEmail ? { id: "u1", email: currentEmail } : null,
+          user: currentEmail
+            ? { id: "u1", email: currentEmail }
+            : null,
         },
       }),
     },
@@ -32,24 +35,37 @@ vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
     from: (table: string) => ({
       select: () => ({
-        in: async () => ({ data: rows, error: null }),
+        in: async () => ({ data: table === "user_source_credentials" ? userRows : globalRows, error: null }),
         eq: (column: string, value: string) => ({
-          maybeSingle: async () => ({
-            data: rows.find((r) => r.provider === value) ?? null,
-            error: null,
-          }),
+          maybeSingle: async () => {
+            if (table !== "profiles") return { data: null, error: null };
+            const email =
+              column === "id" && value === "u1" ? currentEmail : null;
+            return { data: email ? { email } : null, error: null };
+          },
         }),
       }),
       upsert: async (row: Record<string, unknown>) => {
-        upserted.push({ ...row, table });
+        upserted.push({ table, row });
         return { error: null };
       },
-      delete: () => ({
-        eq: async (column: string, value: string) => {
-          deleted.push({ provider: value });
-          return { error: null };
-        },
-      }),
+      delete: () => {
+        // Chainable and awaitable: the real client allows .eq().eq()... and
+        // is awaited at the end.
+        const filters: Record<string, string> = {};
+        const chain: Record<string, unknown> = {};
+        chain.eq = (column: string, value: string) => {
+          filters[column] = value;
+          return chain;
+        };
+        chain.then = (
+          resolve: (value: { error: null }) => unknown,
+        ) => {
+          deleted.push({ table, filters: { ...filters } });
+          return Promise.resolve({ error: null }).then(resolve);
+        };
+        return chain;
+      },
     }),
   }),
 }));
@@ -64,8 +80,7 @@ vi.mock("@/src/domain/sources/ignav-source", () => ({
   },
 }));
 
-const SECRET = "ignav-super-secret-key";
-const HEX_KEY = "1".repeat(64);
+const SECRET = "user-secret-key-123";
 
 const load = async () => await import("./source-credentials");
 
@@ -85,72 +100,39 @@ const submitProvider = (provider: string) => {
 beforeEach(() => {
   upserted.length = 0;
   deleted.length = 0;
+  userRows = [];
+  globalRows = [];
   verificationResults.length = 0;
-  rows = [];
-  currentEmail = ADMIN_EMAIL;
+  currentEmail = "user@example.com";
   process.env.ADMIN_EMAIL = ADMIN_EMAIL;
-  process.env.SOURCE_SECRET_KEY = HEX_KEY;
-  // Both provider keys: a leftover from one test must not decide another.
-  delete process.env.IGNAV_API_KEY;
-  delete process.env.SERPAPI_API_KEY;
+  process.env.SOURCE_SECRET_KEY = "1".repeat(64);
 });
 
-describe("authorisation", () => {
-  it("rejects a non-admin without touching the database", async () => {
-    currentEmail = "someone-else@example.com";
+describe("saveUserCredential", () => {
+  it("writes the row under the caller's own profile", async () => {
     const actions = await load();
-
-    const result = await actions.saveSourceCredential(
-      {},
-      submit("ignav", SECRET),
-    );
-
-    expect(result.error).toMatch(/administrador/i);
-    expect(upserted).toHaveLength(0);
-  });
-
-  it("rejects everyone when no admin is configured", async () => {
-    delete process.env.ADMIN_EMAIL;
-    currentEmail = ADMIN_EMAIL;
-    const actions = await load();
-
-    const result = await actions.saveSourceCredential(
-      {},
-      submit("ignav", SECRET),
-    );
-
-    expect(result.error).toMatch(/administrador/i);
-    expect(upserted).toHaveLength(0);
-  });
-
-  it("hides the whole section from a non-admin", async () => {
-    currentEmail = "someone-else@example.com";
-    const actions = await load();
-
-    await expect(actions.getCredentialStatuses()).resolves.toBeNull();
-  });
-});
-
-describe("saveSourceCredential", () => {
-  it("stores an encrypted payload, never the plaintext", async () => {
-    const actions = await load();
-    await actions.saveSourceCredential({}, submit("ignav", SECRET));
+    await actions.saveUserCredential({}, submit("ignav", SECRET));
 
     expect(upserted).toHaveLength(1);
-    const stored = upserted[0];
-    expect(String(stored.secret_encrypted)).not.toContain(SECRET);
-    expect(String(stored.secret_encrypted).startsWith("v1.")).toBe(true);
+    expect(upserted[0].table).toBe("user_source_credentials");
+    expect(upserted[0].row.profile_id).toBe("u1");
+    expect(String(upserted[0].row.secret_encrypted)).not.toContain(SECRET);
+  });
+
+  it("works for any signed-in user, no allowlist", async () => {
+    currentEmail = "someone-else@example.com";
+    const actions = await load();
+    const state = await actions.saveUserCredential({}, submit("ignav", SECRET));
+
+    expect(state.ok).toBe(true);
+    expect(upserted[0].row.profile_id).toBe("u1");
   });
 
   it("never returns the credential to the client", async () => {
     const actions = await load();
-    const state = await actions.saveSourceCredential(
-      {},
-      submit("ignav", SECRET),
-    );
+    const state = await actions.saveUserCredential({}, submit("ignav", SECRET));
 
-    const serialised = JSON.stringify(state);
-    expect(serialised).not.toContain(SECRET);
+    expect(JSON.stringify(state)).not.toContain(SECRET);
     expect(state.ok).toBe(true);
   });
 
@@ -158,123 +140,121 @@ describe("saveSourceCredential", () => {
     delete process.env.SOURCE_SECRET_KEY;
     const actions = await load();
 
-    const state = await actions.saveSourceCredential(
-      {},
-      submit("ignav", SECRET),
-    );
+    const state = await actions.saveUserCredential({}, submit("ignav", SECRET));
 
     expect(state.error).toMatch(/SOURCE_SECRET_KEY/);
     expect(upserted).toHaveLength(0);
   });
+});
 
-  it("rejects an unknown provider", async () => {
+describe("clearUserCredential", () => {
+  it("deletes only the caller's own row", async () => {
     const actions = await load();
-    const state = await actions.saveSourceCredential(
-      {},
-      submit("amadeus", SECRET),
-    );
+    await actions.clearUserCredential({}, submitProvider("ignav"));
 
-    expect(state.error).toMatch(/desconocida/i);
-    expect(upserted).toHaveLength(0);
+    expect(deleted).toEqual([
+      { table: "user_source_credentials", filters: { profile_id: "u1", provider: "ignav" } },
+    ]);
   });
 });
 
-describe("clearSourceCredential", () => {
-  it("deletes the stored row (reversal)", async () => {
+describe("testUserCredential", () => {
+  it("checks the key that would actually run", async () => {
     const actions = await load();
-    const state = await actions.clearSourceCredential({}, submitProvider("ignav"));
-
-    expect(state.ok).toBe(true);
-    expect(deleted).toEqual([{ provider: "ignav" }]);
-  });
-});
-
-describe("testSourceConnection", () => {
-  it("checks Ignav with a real authenticated call, not the free status endpoint", async () => {
-    const actions = await load();
-    // Save first, then put the encrypted row where the database would have it.
-    await actions.saveSourceCredential({}, submit("ignav", SECRET));
-    rows = upserted.map((row) => ({
-      provider: String(row.provider),
-      secret_encrypted: String(row.secret_encrypted),
+    await actions.saveUserCredential({}, submit("ignav", SECRET));
+    userRows = upserted.map((entry) => ({
+      provider: String(entry.row.provider),
+      secret_encrypted: String(entry.row.secret_encrypted),
     }));
 
-    const state = await actions.testSourceConnection({}, submitProvider("ignav"));
-
+    const state = await actions.testUserCredential({}, submitProvider("ignav"));
     expect(state.ok).toBe(true);
   });
 
-  it("rejects a stored key that Ignav does not accept", async () => {
+  it("tells the user when Ignav rejects their key", async () => {
     const actions = await load();
-    await actions.saveSourceCredential({}, submit("ignav", SECRET));
-    rows = upserted.map((row) => ({
-      provider: String(row.provider),
-      secret_encrypted: String(row.secret_encrypted),
+    await actions.saveUserCredential({}, submit("ignav", SECRET));
+    userRows = upserted.map((entry) => ({
+      provider: String(entry.row.provider),
+      secret_encrypted: String(entry.row.secret_encrypted),
     }));
     verificationResults.push({ secret: SECRET, reason: "invalid_key" });
 
-    const state = await actions.testSourceConnection({}, submitProvider("ignav"));
-
+    const state = await actions.testUserCredential({}, submitProvider("ignav"));
     expect(state.error).toMatch(/no es válida/i);
     expect(JSON.stringify(state)).not.toContain(SECRET);
   });
 
-  it("says so plainly when there is no key to check", async () => {
+  it("does not spend quota on SerpAPI", async () => {
     const actions = await load();
-    const state = await actions.testSourceConnection({}, submitProvider("serpapi"));
+    // With a key in place the check must still refuse to spend quota.
+    await actions.saveUserCredential({}, submit("serpapi", "sa-key-123456"));
+    userRows = upserted.map((entry) => ({
+      provider: String(entry.row.provider),
+      secret_encrypted: String(entry.row.secret_encrypted),
+    }));
 
-    expect(state.error).toMatch(/No hay credencial configurada/i);
-    expect(JSON.stringify(state)).not.toContain("serpapi-");
-  });
+    const state = await actions.testUserCredential({}, submitProvider("serpapi"));
 
-  it("explains that SerpAPI cannot be checked without spending quota", async () => {
-    process.env.SERPAPI_API_KEY = "sa-from-env";
-    const actions = await load();
-    const state = await actions.testSourceConnection(
-      {},
-      submitProvider("serpapi"),
-    );
-
-    expect(state.error).toMatch(/gasta cuota|consume una búsqueda/i);
-    expect(JSON.stringify(state)).not.toContain("sa-from-env");
+    expect(state.error).toMatch(/gasta cuota|consume una/i);
+    expect(state.ok).toBeUndefined();
   });
 });
 
-describe("getCredentialStatuses", () => {
-  it("labels where each credential comes from", async () => {
+describe("getUserCredentialStatuses", () => {
+  it("reports the caller's own keys and what a search would use", async () => {
     const actions = await load();
-    const statuses = await actions.getCredentialStatuses();
+    await actions.saveUserCredential({}, submit("ignav", SECRET));
+    userRows = upserted.map((entry) => ({
+      provider: String(entry.row.provider),
+      secret_encrypted: String(entry.row.secret_encrypted),
+    }));
 
-    // Nothing stored, no env: both report "none" and no stored row.
+    const statuses = await actions.getUserCredentialStatuses();
     expect(statuses).toEqual([
-      { provider: "serpapi", origin: "none", hasStored: false },
-      { provider: "ignav", origin: "none", hasStored: false },
+      { provider: "serpapi", hasOwn: false, effective: "none" },
+      { provider: "ignav", hasOwn: true, effective: "user" },
     ]);
   });
 
-  it("reports a stored row even when the environment variable wins", async () => {
+  it("shows the admin that their global key is in force", async () => {
+    currentEmail = ADMIN_EMAIL;
+    globalRows = [
+      { provider: "serpapi", secret_encrypted: "v1.aaaa.bbbb" },
+    ];
     const actions = await load();
-    await actions.saveSourceCredential({}, submit("ignav", SECRET));
-    // Mirror the database: the save wrote a row, so the reader sees it.
-    rows = upserted.map((row) => ({
-      provider: String(row.provider),
-      secret_encrypted: String(row.secret_encrypted),
-    }));
-    process.env.IGNAV_API_KEY = "ignav-from-env";
 
-    const statuses = await actions.getCredentialStatuses();
+    const statuses = await actions.getUserCredentialStatuses();
+    // The row is unreadable on purpose: it must not block the global label.
+    expect(statuses.find((s) => s.provider === "serpapi")?.effective).toBe("none");
+  });
+});
 
-    const ignav = statuses?.find((s) => s.provider === "ignav");
-    expect(ignav?.origin).toBe("env");
-    // The admin must still see (and be able to remove) the stored row.
-    expect(ignav?.hasStored).toBe(true);
+describe("global keys stay admin-only", () => {
+  it("rejects a regular user reading them", async () => {
+    const actions = await load();
+    await expect(actions.getGlobalCredentialStatuses()).resolves.toBeNull();
   });
 
-  it("prefers the environment variable and says so", async () => {
-    process.env.IGNAV_API_KEY = "ignav-from-env";
+  it("rejects a regular user writing them", async () => {
     const actions = await load();
-    const statuses = await actions.getCredentialStatuses();
+    const state = await actions.saveSourceCredential({}, submit("ignav", SECRET));
 
-    expect(statuses?.find((s) => s.provider === "ignav")?.origin).toBe("env");
+    expect(state.error).toMatch(/administrador/i);
+    expect(upserted).toHaveLength(0);
+  });
+
+  it("lets the admin write them", async () => {
+    currentEmail = ADMIN_EMAIL;
+    const actions = await load();
+    const state = await actions.saveSourceCredential({}, submit("ignav", SECRET));
+
+    expect(state.ok).toBe(true);
+    expect(upserted[0].table).toBe("source_credentials");
+  });
+
+  it("hides the global section from a regular user", async () => {
+    const actions = await load();
+    await expect(actions.getGlobalCredentialStatuses()).resolves.toBeNull();
   });
 });

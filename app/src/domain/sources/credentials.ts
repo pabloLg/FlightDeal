@@ -15,7 +15,6 @@ const KEY_BYTES = 32;
 const IV_BYTES = 12;
 
 export type CredentialProvider = "serpapi" | "ignav";
-export type CredentialOrigin = "env" | "database" | "none";
 
 export const CREDENTIAL_PROVIDERS: CredentialProvider[] = ["serpapi", "ignav"];
 
@@ -59,14 +58,6 @@ export const PROVIDER_INFO: ProviderInfo[] = [
     canTestConnection: true,
   },
 ];
-
-export interface ResolvedCredentials {
-  serpapi: string | null;
-  ignav: string | null;
-  /** Where each credential came from, so the UI can label it honestly. */
-  serpapiOrigin: CredentialOrigin;
-  ignavOrigin: CredentialOrigin;
-}
 
 class CredentialError extends Error {
   constructor(message: string) {
@@ -175,146 +166,197 @@ export function redact(message: string, secrets: (string | null)[]): string {
   return out;
 }
 
+type StoredRow = { provider?: unknown; secret_encrypted?: unknown };
+
 // Minimal structural shape the Supabase client satisfies. Kept narrow on
 // purpose: the module must be testable with a stub and must not depend on the
 // generated database types, which would make the credential path fragile.
-type CredentialQuery = {
-  select: (columns: string) => {
-    in: (
-      column: string,
-      values: string[],
-    ) => PromiseLike<{ data: unknown; error: unknown }>;
+type CredentialChain = {
+  in: (
+    column: string,
+    values: readonly string[],
+  ) => PromiseLike<{ data: unknown; error: unknown }>;
+  eq: (column: string, value: string) => {
+    maybeSingle: () => PromiseLike<{ data: unknown; error: unknown }>;
   };
 };
+
+type CredentialQuery = { select: (columns: string) => CredentialChain };
 
 export type CredentialClient = {
   from: (table: string) => CredentialQuery;
 };
 
-type StoredRow = { provider?: unknown; secret_encrypted?: unknown };
+/** Where a credential in force came from. */
+export type CredentialOrigin = "user" | "global" | "none";
 
-/** Environment credentials only. Pure, so the precedence rule is testable. */
-export function resolveFromEnv(
-  env: Record<string, string | undefined> = process.env,
-): { serpapi: string | null; ignav: string | null } {
-  const read = (value: string | undefined) => {
-    const trimmed = (value ?? "").trim();
-    return trimmed.length > 0 ? trimmed : null;
-  };
-  return {
-    serpapi: read(env.SERPAPI_API_KEY),
-    ignav: read(env.IGNAV_API_KEY),
-  };
+export interface ResolvedCredentials {
+  serpapi: string | null;
+  ignav: string | null;
+  serpapiOrigin: CredentialOrigin;
+  ignavOrigin: CredentialOrigin;
 }
 
-/**
- * Stored credentials, decrypted. A failure (missing master key, wrong key,
- * database error) means "no stored credential" rather than an exception:
- * the chain must still run on environment variables.
- */
-export async function readStoredCredentials(
+const NONE: ResolvedCredentials = {
+  serpapi: null,
+  ignav: null,
+  serpapiOrigin: "none",
+  ignavOrigin: "none",
+};
+
+function isProvider(value: unknown): value is CredentialProvider {
+  return value === "serpapi" || value === "ignav";
+}
+
+async function readRows(
   client: CredentialClient,
-  env: Record<string, string | undefined> = process.env,
+  table: string,
+  filter: (chain: CredentialChain) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<StoredRow[]> {
+  const { data, error } = await filter(client.from(table).select("provider, secret_encrypted"));
+  if (error || !Array.isArray(data)) return [];
+  return data.filter(
+    (row): row is StoredRow =>
+      typeof row === "object" && row !== null && typeof (row as StoredRow).secret_encrypted === "string",
+  );
+}
+
+async function decryptRows(
+  rows: StoredRow[],
+  masterKey: Uint8Array<ArrayBuffer>,
 ): Promise<{ serpapi: string | null; ignav: string | null }> {
-  const empty = { serpapi: null, ignav: null };
-  if (!hasMasterKey(env)) return empty;
-
-  let masterKey: Uint8Array<ArrayBuffer>;
-  try {
-    masterKey = parseMasterKey(env.SOURCE_SECRET_KEY);
-  } catch {
-    return empty;
-  }
-
-  const { data, error } = await client
-    .from("source_credentials")
-    .select("provider, secret_encrypted")
-    .in("provider", CREDENTIAL_PROVIDERS);
-
-  if (error || !Array.isArray(data)) return empty;
-
   const out: { serpapi: string | null; ignav: string | null } = {
     serpapi: null,
     ignav: null,
   };
-  for (const row of data as StoredRow[]) {
-    if (typeof row.secret_encrypted !== "string") continue;
-    if (row.provider !== "serpapi" && row.provider !== "ignav") continue;
+  for (const row of rows) {
+    if (!isProvider(row.provider)) continue;
     try {
-      const secret = await decryptSecret(row.secret_encrypted, masterKey);
+      const secret = await decryptSecret(row.secret_encrypted as string, masterKey);
       out[row.provider] = secret;
     } catch {
-      // Unreadable row: skip it. The environment variable still applies.
+      // Unreadable row: skip it. Another source can still work.
     }
   }
   return out;
 }
 
-/**
- * Which providers have a stored credential, without reading or decrypting it.
- * Needed because the environment variable wins: a stored row is then invisible
- * in the resolved credentials, yet the admin still has to see and remove it.
- */
-export async function readStoredCredentialProviders(
-  client: CredentialClient,
-): Promise<CredentialProvider[]> {
-  const { data, error } = await client
-    .from("source_credentials")
-    .select("provider")
-    .in("provider", CREDENTIAL_PROVIDERS);
-
-  if (error || !Array.isArray(data)) return [];
-  return (data as { provider?: unknown }[])
-    .filter((row) => row.provider === "serpapi" || row.provider === "ignav")
-    .map((row) => row.provider as CredentialProvider);
+/** True when the profile is the declared administrator (ADMIN_EMAIL). */
+export function isAdminEmail(
+  email: string | null | undefined,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const allowed = (env.ADMIN_EMAIL ?? "").trim().toLowerCase();
+  if (!allowed || !email) return false;
+  return email.trim().toLowerCase() === allowed;
 }
 
 /**
- * Same precedence rule, but a broken admin client (or a database error) must
- * not fail a search: the app falls back to environment-only credentials,
- * which is exactly how it behaved before stored credentials existed.
+ * Credentials for one profile, in force order:
+ *   1. the profile's own key (user_source_credentials)
+ *   2. only when the profile IS the administrator, the global key
+ *      (source_credentials)
+ *   3. otherwise that source is simply not asked, and google_flights (which
+ *      needs no key) keeps working. Nobody spends anyone else's quota.
+ *
+ * Environment variables are deliberately NOT part of this chain: they would be
+ * a shared fallback for every user, which is exactly what this design avoids.
  */
-export async function resolveSourceCredentialsSafe(
+export async function resolveSourceCredentialsForProfile(
+  client: CredentialClient,
+  profileId: string,
+  env: Record<string, string | undefined> = process.env,
+): Promise<ResolvedCredentials> {
+  if (!hasMasterKey(env)) return NONE;
+
+  let masterKey: Uint8Array<ArrayBuffer>;
+  try {
+    masterKey = parseMasterKey(env.SOURCE_SECRET_KEY);
+  } catch {
+    return NONE;
+  }
+
+  const userRows = await readRows(client, "user_source_credentials", (chain) =>
+    chain.in("profile_id", [profileId]),
+  );
+  const own = await decryptRows(userRows, masterKey);
+  if (own.serpapi && own.ignav) {
+    return {
+      serpapi: own.serpapi,
+      ignav: own.ignav,
+      serpapiOrigin: "user",
+      ignavOrigin: "user",
+    };
+  }
+
+  const { data: profile } = await client
+    .from("profiles")
+    .select("email")
+    .eq("id", profileId)
+    .maybeSingle();
+  const email =
+    profile && typeof profile === "object"
+      ? (profile as { email?: unknown }).email
+      : null;
+  const admin = isAdminEmail(typeof email === "string" ? email : null, env);
+
+  const global: { serpapi: string | null; ignav: string | null } = admin
+    ? await decryptRows(
+        await readRows(client, "source_credentials", (chain) =>
+          chain.in("provider", CREDENTIAL_PROVIDERS),
+        ),
+        masterKey,
+      )
+    : { serpapi: null, ignav: null };
+
+  const serpapi = own.serpapi ?? global.serpapi;
+  const ignav = own.ignav ?? global.ignav;
+
+  return {
+    serpapi,
+    ignav,
+    serpapiOrigin: own.serpapi ? "user" : global.serpapi ? "global" : "none",
+    ignavOrigin: own.ignav ? "user" : global.ignav ? "global" : "none",
+  };
+}
+
+/**
+ * Same, but a broken client (or a database error) must not fail a search:
+ * the run falls back to "no API keys", which still leaves google_flights.
+ */
+export async function resolveSourceCredentialsForProfileSafe(
   createClient: () => CredentialClient,
+  profileId: string,
   env: Record<string, string | undefined> = process.env,
 ): Promise<ResolvedCredentials> {
   try {
-    return await resolveSourceCredentials(createClient(), env);
+    return await resolveSourceCredentialsForProfile(createClient(), profileId, env);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(
-      `[credentials] sin cliente administrador, se usan solo las variables de entorno: ${redact(message, [resolveFromEnv(env).serpapi, resolveFromEnv(env).ignav])}`,
+      `[credentials] sin acceso al almacen de credenciales, seguira solo con google_flights: ${message}`,
     );
-    const fromEnv = resolveFromEnv(env);
-    return {
-      serpapi: fromEnv.serpapi,
-      ignav: fromEnv.ignav,
-      serpapiOrigin: fromEnv.serpapi ? "env" : "none",
-      ignavOrigin: fromEnv.ignav ? "env" : "none",
-    };
+    return NONE;
   }
 }
-export async function resolveSourceCredentials(
-  client: CredentialClient | null,
-  env: Record<string, string | undefined> = process.env,
-): Promise<ResolvedCredentials> {
-  const fromEnv = resolveFromEnv(env);
-  const stored = client ? await readStoredCredentials(client, env) : { serpapi: null, ignav: null };
 
-  const pick = (envValue: string | null, storedValue: string | null) =>
-    envValue
-      ? { value: envValue, origin: "env" as CredentialOrigin }
-      : storedValue
-        ? { value: storedValue, origin: "database" as CredentialOrigin }
-        : { value: null, origin: "none" as CredentialOrigin };
+/** Which providers this profile has a key for, without decrypting them. */
+export async function readStoredUserCredentialProviders(
+  client: CredentialClient,
+  profileId: string,
+): Promise<CredentialProvider[]> {
+  const rows = await readRows(client, "user_source_credentials", (chain) =>
+    chain.in("profile_id", [profileId]),
+  );
+  return rows.filter((row) => isProvider(row.provider)).map((row) => row.provider as CredentialProvider);
+}
 
-  const serpapi = pick(fromEnv.serpapi, stored.serpapi);
-  const ignav = pick(fromEnv.ignav, stored.ignav);
-
-  return {
-    serpapi: serpapi.value,
-    ignav: ignav.value,
-    serpapiOrigin: serpapi.origin,
-    ignavOrigin: ignav.origin,
-  };
+/** Which providers have a global key, without decrypting it. */
+export async function readStoredCredentialProviders(
+  client: CredentialClient,
+): Promise<CredentialProvider[]> {
+  const rows = await readRows(client, "source_credentials", (chain) =>
+    chain.in("provider", CREDENTIAL_PROVIDERS),
+  );
+  return rows.filter((row) => isProvider(row.provider)).map((row) => row.provider as CredentialProvider);
 }
