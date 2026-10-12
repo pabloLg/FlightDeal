@@ -19,6 +19,78 @@ import {
   type FlightOptionRow,
 } from "@/src/domain/deals/filters";
 
+// Which sources this execution actually asked, and why the others were not.
+// Read from raw_result so the page can answer "why Google only?" honestly.
+type SourceTrace = {
+  used: string[];
+  skipped: { source: string; reason: string }[];
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  google_flights: "Google Flights",
+  serpapi: "SerpAPI",
+  ignav: "Ignav",
+  mock: "Mock",
+};
+
+const SKIP_REASON: Record<string, string> = {
+  missing_api_key: "sin clave configurada",
+  unknown_source: "fuente desconocida",
+  max_sources_per_run_reached: "límite de fuentes por ejecución",
+  budget_exhausted: "presupuesto agotado",
+  timeout_margin_exceeded: "sin tiempo para otra fuente",
+  no_flights: "sin vuelos en esta fuente",
+};
+
+function readSourceTrace(raw: unknown): SourceTrace | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const result = raw as {
+    skipped?: unknown;
+    aggregation?: { sourcesIncluded?: unknown };
+  };
+  const skippedRaw = Array.isArray(result.skipped) ? result.skipped : [];
+  const skipped = skippedRaw.flatMap((entry) => {
+    if (typeof entry !== "string" || !entry.includes(":")) return [];
+    const [source, reason] = entry.split(":");
+    return [
+      {
+        source: SOURCE_LABEL[source] ?? source,
+        reason: SKIP_REASON[reason] ?? reason,
+      },
+    ];
+  });
+  const included = Array.isArray(result.aggregation?.sourcesIncluded)
+    ? (result.aggregation!.sourcesIncluded as unknown[])
+    : [];
+  const used = included.map((s) => SOURCE_LABEL[String(s)] ?? String(s));
+  if (used.length === 0 && skipped.length === 0) return null;
+  return { used, skipped };
+}
+
+function SourceTraceNote({ trace }: { trace: SourceTrace }) {
+  return (
+    <p className="text-xs text-muted-foreground">
+      {trace.used.length > 0 ? (
+        <>
+          Fuentes consultadas:{" "}
+          <span className="font-medium text-brand-dark">
+            {trace.used.join(" · ")}
+          </span>
+          .
+        </>
+      ) : null}
+      {trace.skipped.length > 0 ? (
+        <>
+          {" "}
+          Sin consultar:{" "}
+          {trace.skipped.map((s) => `${s.source} (${s.reason})`).join(", ")}.
+        </>
+      ) : null}{" "}
+      Cada fuente usa las claves del dueño de la búsqueda.
+    </p>
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -57,7 +129,7 @@ export default async function SearchResultsPage({
 
   const { data: execution } = await supabase
     .from("search_executions")
-    .select("id, status, finished_at, error_message")
+    .select("id, status, finished_at, error_message, raw_result")
     .eq("search_id", id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -85,6 +157,7 @@ export default async function SearchResultsPage({
     filters.nonStopOnly ||
     filters.airline != null;
   const airlines = airlineOptions(allRows);
+  const sourceTrace = readSourceTrace(execution.raw_result);
   const bookingUrl = buildBookingUrl({
     origin: search.origin,
     destination: search.destination,
@@ -141,6 +214,11 @@ export default async function SearchResultsPage({
               </Badge>
             ) : null}
           </div>
+          {sourceTrace ? (
+            <div className="mt-2">
+              <SourceTraceNote trace={sourceTrace} />
+            </div>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <Button
