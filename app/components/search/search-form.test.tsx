@@ -30,4 +30,15 @@ describe("SearchForm", () => {
     expect(returnDate).toBeEnabled();
     expect(tripType()).toBe("round_trip");
   });
+
+  it("warns that flexible dates restrict the search to Google Flights", async () => {
+    render(<SearchForm />);
+    const flex = screen.getByLabelText("Flexibilidad (± días)");
+
+    expect(screen.queryByText(/solo se consulta Google Flights/)).toBeNull();
+
+    await userEvent.type(flex, "3");
+
+    expect(screen.getByText(/solo se consulta Google Flights/)).toBeTruthy();
+  });
 });

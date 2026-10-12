@@ -13,6 +13,7 @@ const emptyState: SearchFormState = {};
 export function SearchForm() {
   const [state, formAction, pending] = useActionState(createSearch, emptyState);
   const [roundTrip, setRoundTrip] = useState(false);
+  const [flexible, setFlexible] = useState(false);
 
   return (
     <Card className="ring-brand/15 shadow-card">
@@ -90,7 +91,15 @@ export function SearchForm() {
               max={21}
               defaultValue={0}
               placeholder="0 = fechas exactas"
+              onChange={(event) => setFlexible(Number(event.target.value) > 0)}
             />
+            {flexible ? (
+              <p className="text-xs text-opportunity">
+                Con fechas flexibles solo se consulta Google Flights: SerpAPI e
+                Ignav degradan a propósito para no buscar en silencio solo tus
+                fechas exactas.
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-col justify-end sm:col-span-2 lg:col-span-4">
             <Button type="submit" className="h-9" disabled={pending}>
