@@ -1,37 +1,46 @@
+import { PriceArea } from "@/components/charts/price-area";
 import { Badge } from "@/components/ui/badge";
 
-export type PriceStatRow = {
-  stats_date: string;
-  min_price_eur: number;
-  max_price_eur: number;
-  avg_price_eur: number;
-  observations: number;
-};
+import type { RouteHistoryDay } from "@/src/domain/deals/route-history";
 
-// Historical daily range (min-max) with the average marked, drawn in CSS
-// from data the app already stores. No chart library, no invented points.
-// The statistics are stored in EUR, so they are labelled as such and a
-// notice appears when the profile uses another currency instead of quietly
-// relabelling someone else's numbers.
+// Date-only strings are pinned to UTC so the label never slips a day.
+const fmtDay = (iso: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  });
+
+const minOf = (days: RouteHistoryDay[]) => Math.min(...days.map((d) => d.min));
+const maxOf = (days: RouteHistoryDay[]) => Math.max(...days.map((d) => d.max));
+
+// Route history: the observed daily minimum across every search on this route
+// (not only the current one), drawn as an area chart with labelled axes and one
+// marker per observed day. The statistics are stored in EUR, so they are
+// labelled as such and a notice appears when the profile uses another currency
+// instead of quietly relabelling someone else's numbers.
 function PriceHistory({
-  stats,
+  days,
   currency,
   currentPrice,
+  habitual,
+  searchCount,
 }: {
-  stats: PriceStatRow[];
+  days: RouteHistoryDay[];
   /** Profile currency, used only to decide whether the EUR notice is needed. */
   currency: string;
   currentPrice: number | null;
+  /** Mean of the route's observed daily minimums; baseline for the badge. */
+  habitual: number | null;
+  /** How many searches of the route are combined in this history. */
+  searchCount: number;
 }) {
-  const max = Math.max(...stats.map((s) => s.max_price_eur), 0);
-  const hasHistory = stats.some((s) => s.observations > 0);
-  const habitual =
-    stats.reduce((acc, s) => acc + s.avg_price_eur, 0) / (stats.length || 1);
   const diff =
-    currentPrice != null && habitual > 0
+    currentPrice != null && habitual != null && habitual > 0
       ? Math.round((1 - currentPrice / habitual) * 100)
       : null;
-  const scale = (value: number) => (max > 0 ? Math.max(4, (value / max) * 100) : 4);
+  const bestDay =
+    days.length > 0 ? days.reduce((a, b) => (b.min < a.min ? b : a)) : null;
 
   return (
     <div className="flex flex-col gap-3">
@@ -56,52 +65,35 @@ function PriceHistory({
         </p>
       )}
 
-      {stats.map((s) => {
-        const min = scale(s.min_price_eur);
-        const maxH = Math.max(min + 1, scale(s.max_price_eur));
-        return (
-          <div
-            key={s.stats_date}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
-          >
-            <span className="w-24 shrink-0 text-muted-foreground">
-              {new Date(s.stats_date).toLocaleDateString("es-ES")}
-            </span>
-            <div className="relative h-16 flex-1">
-              {/* Observed range for the day. */}
-              <div
-                className="absolute bottom-0 w-full rounded-t bg-brand/25"
-                style={{ height: `${maxH}%` }}
-              />
-              {/* Cheapest observed price that day. */}
-              <div
-                className="absolute bottom-0 w-full rounded-t bg-brand"
-                style={{ height: `${min}%` }}
-                title={`mínimo ${s.min_price_eur.toFixed(2)} EUR`}
-              />
-              {/* Average, as a reference mark rather than a bar. */}
-              <div
-                aria-hidden
-                className="absolute inset-x-0 border-t border-dashed border-savings"
-                style={{ bottom: `${scale(s.avg_price_eur)}%` }}
-                title={`media ${s.avg_price_eur.toFixed(2)} EUR`}
-              />
-            </div>
-            <span className="w-32 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-              {s.min_price_eur.toFixed(2)} – {s.max_price_eur.toFixed(2)} EUR
-            </span>
-            <span className="w-28 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-              media {s.avg_price_eur.toFixed(2)}
-            </span>
-          </div>
-        );
-      })}
-
-      {!hasHistory && (
+      {days.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Sin observaciones todavía: el agregado diario (mínimo, máximo y media)
-          aparece tras las próximas ejecuciones de esta búsqueda.
+          Sin observaciones todavía: el mínimo diario aparece tras las próximas
+          ejecuciones de esta ruta.
         </p>
+      ) : (
+        <>
+          <PriceArea
+            days={days}
+            habitual={habitual}
+            ariaLabel={`Evolución del mínimo diario observado (EUR): ${minOf(
+              days,
+            ).toFixed(2)} a ${maxOf(days).toFixed(2)} EUR, del ${fmtDay(
+              days[0].date,
+            )} al ${fmtDay(days[days.length - 1].date)}.`}
+          />
+          <p className="text-xs text-muted-foreground">
+            {searchCount > 1
+              ? `${searchCount} búsquedas de esta ruta combinadas · `
+              : ""}
+            mínimo del período {minOf(days).toFixed(2)} EUR · rango{" "}
+            {minOf(days).toFixed(2)}–{maxOf(days).toFixed(2)} EUR
+          </p>
+          {bestDay && (
+            <p className="text-xs text-muted-foreground">
+              Mejor día: {fmtDay(bestDay.date)} · {bestDay.min.toFixed(2)} EUR
+            </p>
+          )}
+        </>
       )}
 
       <p className="text-xs text-muted-foreground">

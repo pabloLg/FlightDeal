@@ -100,6 +100,10 @@ describe("applyFilters", () => {
   it("filters by airline code or pretty name and lists the options once", () => {
     const mixed = [...rows, row(70, 1, 600, "IB")];
     expect(airlineOptions(mixed)).toEqual(["Air Europa", "Iberia"]);
+    const named = [...rows, row(70, 1, 600, "VY")];
+    named.at(-1)!.airlines = ["Vueling"];
+    named.at(-1)!.outbound_legs[0].airlineName = "Vueling";
+    expect(airlineOptions(named)).toEqual(["Air Europa", "Vueling"]);
     expect(
       applyFilters(mixed, { ...DEFAULT_FILTERS, airline: "Iberia" }).map(
         (r) => r.price_eur,
