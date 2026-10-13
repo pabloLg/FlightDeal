@@ -28,6 +28,15 @@ const RESULTS_CARD = 'div[role="link"][aria-label*="euros"], div[role="link"][ar
 const RESULTS_PAYLOAD = "AF_initDataCallback({key: 'ds:1'";
 const SHOPPING_RESULTS = "GetShoppingResults";
 const NAV_TIMEOUT = 45_000;
+// How long the card hint gets to appear when the payload is not in the HTML
+// yet. Short on purpose: the card is not what decides success.
+const PENDING_PAYLOAD_GRACE_MS = 8_000;
+
+// Success signal for a results page: the server-rendered payload. Both the
+// card variant and the payload-only variant ship it, so it is what decides.
+export function hasResultsPayload(html: string): boolean {
+  return html.includes(RESULTS_PAYLOAD);
+}
 
 // One deadline per search, owned by GoogleFlightsScraperSource. Per-operation
 // timeouts do not add up to the platform limit: Vercel caps this function at
@@ -188,18 +197,25 @@ export const playwrightHtmlFetcher: HtmlFetcher = (url, deadline) =>
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         await openResults(page, url, deadline);
-        // The results shell is server-rendered; waiting for a card is only a
-        // sanity check that we are not reading an interstitial.
-        await page
-          .locator(RESULTS_CARD)
-          .first()
-          .waitFor({ state: "attached", timeout: budgetLeft(deadline, "results_card") });
-        const html = await withBudget(page.content(), deadline, "content");
-        // Google sometimes serves the shell before the server-rendered payload
-        // (cards arrive from an RPC and ds:1 never lands in the HTML). Reloading
-        // hits the payload-bearing variant; if both come up empty the source
-        // degrades, which is the fail-closed behaviour we want.
-        if (html.includes(RESULTS_PAYLOAD)) {
+        let html = await withBudget(page.content(), deadline, "content");
+        // Google serves two variants: one with the result cards, and one with
+        // the server-rendered payload and no card at all (the reload path, see
+        // fixtures — 4× ds:1, 0 cards). Gating on the card made the payload
+        // variant time out for the whole budget with the prices already in the
+        // HTML, so the payload is checked first and the card only buys the
+        // deferred RPC a short grace window before the reload.
+        if (!hasResultsPayload(html)) {
+          const grace = stepTimeout(deadline, Date.now(), PENDING_PAYLOAD_GRACE_MS);
+          if (grace > 0) {
+            await page
+              .locator(RESULTS_CARD)
+              .first()
+              .waitFor({ state: "attached", timeout: grace })
+              .catch(() => {});
+            html = await withBudget(page.content(), deadline, "content");
+          }
+        }
+        if (hasResultsPayload(html)) {
           console.log(
             `[scrape] results ok in ${Date.now() - startedAt}ms, ${html.length} bytes, attempt ${attempt + 1}`,
           );

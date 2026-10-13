@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
   const startedAt = Date.now();
   let done = 0;
-  let deferred = 0;
+  const deferredIds: string[] = [];
   // Fits the *next* search before starting it, not just the elapsed time: a
   // search that took 50 s must not be followed by another inside a 60 s
   // invocation. Slowest-so-far seeds the estimate and then measures itself, so
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
   let slowestMs = 30_000;
   for (const exec of executions as { execution_id: string; search_id: string }[]) {
     if (Date.now() - startedAt + slowestMs > BUDGET_MS) {
-      deferred++;
+      deferredIds.push(exec.execution_id);
       continue;
     }
     const searchStartedAt = Date.now();
@@ -61,10 +61,21 @@ export async function POST(request: Request) {
     done++;
   }
 
+  // The loop only runs what fits the budget, so a batch of 10 leaves most of
+  // its executions leased but unrun. Left alone they expire and
+  // release_expired_leases marks them 'failed' at the next tick — a fake
+  // failure the user sees. They carry no data, so delete them: the search is
+  // eligible again at the next tick.
+  // ponytail: the daily cron is the real ceiling (one tick a day on Hobby);
+  // more frequent cron (Pro) or self-hosting is what buys intra-day retries.
+  if (deferredIds.length > 0) {
+    await supabase.from("search_executions").delete().in("id", deferredIds);
+  }
+
   return NextResponse.json({
     executions: executions.length,
     completed: done,
-    deferred,
+    deferred: deferredIds.length,
     pricesPurged,
     ms: Date.now() - startedAt,
   });

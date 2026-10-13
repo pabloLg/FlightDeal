@@ -102,7 +102,8 @@ export default async function DashboardPage() {
   const searchIds = (searches ?? []).map((s) => s.id);
 
   const lastExecution = new Map<string, ExecutionRow>();
-  const resultsExecution = new Map<string, string>();
+  const execRank = new Map<string, number>();
+  const execById = new Map<string, ExecutionRow>();
   const baselineBySearch = new Map<string, number>();
   const trendBySearch = new Map<string, number>();
   if (searchIds.length > 0) {
@@ -120,16 +121,15 @@ export default async function DashboardPage() {
         .gte("stats_date", isoDaysAgo(30)),
     ]);
 
-    for (const exec of (executions ?? []) as ExecutionRow[]) {
+    // Executions arrive newest first, so the array index is a per-search "how
+    // recent" rank. Both maps are read below to keep, per search, the newest
+    // run that actually returned rows.
+    ((executions ?? []) as ExecutionRow[]).forEach((exec, i) => {
+      execRank.set(exec.id, i);
+      execById.set(exec.id, exec);
       if (!lastExecution.has(exec.search_id))
         lastExecution.set(exec.search_id, exec);
-      if (
-        !resultsExecution.has(exec.search_id) &&
-        (exec.status === "completed" || exec.status === "degraded")
-      ) {
-        resultsExecution.set(exec.search_id, exec.id);
-      }
-    }
+    });
 
     const avgAcc = new Map<string, { sum: number; n: number }>();
     const weekAgo = isoDaysAgo(7);
@@ -153,15 +153,36 @@ export default async function DashboardPage() {
 
   const optionsBySearch = new Map<string, FlightOptionRow[]>();
   const availableDatesBySearch = new Map<string, Set<string>>();
-  if (resultsExecution.size > 0) {
+  const displayExecBySearch = new Map<string, ExecutionRow>();
+  if (searchIds.length > 0) {
+    // Options belong to the search, not to one run: every execution's rows
+    // coexist in flight_options (the dedupe key folds in the departure date).
+    // A degraded run persists nothing, so picking it as "the results run"
+    // blanked prices a previous good run had already found. Keep, per search,
+    // the rows of the newest execution that actually returned some.
     const { data: options } = await supabase
       .from("flight_options")
       .select(
         "id, search_id, execution_id, dedupe_key, price_eur, currency, airlines, total_duration_min, outbound_legs, inbound_legs",
       )
-      .in("execution_id", [...resultsExecution.values()])
+      .in("search_id", searchIds)
       .order("price_eur", { ascending: true });
-    for (const opt of (options ?? []) as FlightOptionRow[]) {
+    const rows = (options ?? []) as FlightOptionRow[];
+
+    const bestRank = new Map<string, number>();
+    for (const opt of rows) {
+      const rank = execRank.get(opt.execution_id) ?? Number.POSITIVE_INFINITY;
+      const current = bestRank.get(opt.search_id);
+      if (current === undefined || rank < current) {
+        bestRank.set(opt.search_id, rank);
+        const exec = execById.get(opt.execution_id);
+        if (exec) displayExecBySearch.set(opt.search_id, exec);
+      }
+    }
+
+    for (const opt of rows) {
+      const winner = displayExecBySearch.get(opt.search_id);
+      if (!winner || winner.id !== opt.execution_id) continue;
       const list = optionsBySearch.get(opt.search_id);
       if (list) list.push(opt);
       else optionsBySearch.set(opt.search_id, [opt]);
@@ -213,7 +234,11 @@ export default async function DashboardPage() {
 
   const deals: DealType[] = (searches ?? [])
     .flatMap((s) => {
-      const executedAt = lastExecution.get(s.id)?.finished_at ?? null;
+      // When the newest run degraded, the prices on screen are the last good
+      // run's, so the freshness chip must date them, not the failed attempt.
+      const executedAt =
+        (displayExecBySearch.get(s.id) ?? lastExecution.get(s.id))?.finished_at ??
+        null;
       const baseline = baselineBySearch.get(s.id) ?? null;
       const availableDates = [...(availableDatesBySearch.get(s.id) ?? [])].sort();
       const executionStatus = lastExecution.get(s.id)?.status ?? null;

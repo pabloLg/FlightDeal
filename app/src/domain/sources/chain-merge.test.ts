@@ -170,8 +170,30 @@ describe("searchWithSequentialMerge", () => {
     );
 
     expect(out.result.degraded).toBe(true);
-    expect(out.result.message).toBe("http_402");
+    // The FIRST source's reason, not the last: the last one was tried only
+    // because the first had already failed, so it would mask the real cause.
+    expect(out.result.message).toBe("http_429");
     expect(out.result.options).toEqual([]);
+    // Every attempt is still kept, so the UI can show the whole chain.
+    expect(out.attempts.map((a) => a.reason)).toEqual(["http_429", "http_402"]);
+  });
+
+  it("surfaces the primary source's reason over a later degradation", async () => {
+    // A later source is only asked because the first already failed, so its
+    // reason must not mask the first, real cause (a flex run used to end with
+    // SerpAPI's "flex_unsupported" hiding Google's failure).
+    const out = await searchWithSequentialMerge(
+      [
+        stub("google_flights", degraded("fetch_failed:timeout")),
+        stub("serpapi", degraded("structure_mismatch:unparsable_response")),
+      ],
+      params,
+      5000,
+      {},
+    );
+
+    expect(out.result.degraded).toBe(true);
+    expect(out.result.message).toBe("fetch_failed:timeout");
   });
 
   it("treats an empty chain as degraded instead of succeeding empty", async () => {

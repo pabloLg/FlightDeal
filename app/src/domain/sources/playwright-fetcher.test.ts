@@ -1,6 +1,8 @@
+import fs from "fs";
+import path from "path";
 import { describe, expect, it } from "vitest";
 
-import { browserPlan, stepTimeout, withBudget } from "./playwright-fetcher";
+import { browserPlan, hasResultsPayload, stepTimeout, withBudget } from "./playwright-fetcher";
 
 describe("browserPlan", () => {
   it("prefers an explicit CHROMIUM_PATH over everything", () => {
@@ -15,6 +17,24 @@ describe("browserPlan", () => {
 
   it("falls back to playwright-core's own browser", () => {
     expect(browserPlan({})).toBe("playwright");
+  });
+});
+
+describe("hasResultsPayload", () => {
+  // Regression: gating on the results card degraded a page whose prices were
+  // already in the HTML. Google's reload path serves the payload variant with
+  // no card at all, which is exactly what this fixture captures.
+  it("accepts a payload whose page has no result card", () => {
+    const html = fs.readFileSync(
+      path.join(__dirname, "fixtures", "mad-bcn-roundtrip.html"),
+      "utf8",
+    );
+    expect(html).not.toContain('role="link"');
+    expect(hasResultsPayload(html)).toBe(true);
+  });
+
+  it("rejects a shell without the payload", () => {
+    expect(hasResultsPayload("<html><body>sin datos</body></html>")).toBe(false);
   });
 });
 

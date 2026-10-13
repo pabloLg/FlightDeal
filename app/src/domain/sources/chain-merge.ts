@@ -65,7 +65,7 @@ export async function searchWithSequentialMerge(
   let bestPrice: number | null = null;
   let bestSource: string | null = null;
   let structureVersion = 0;
-  let lastDegraded: { result: FlightSourceResult; sourceId: string } | null = null;
+  let firstDegraded: { result: FlightSourceResult; sourceId: string } | null = null;
   let emptyResult: { result: FlightSourceResult; sourceId: string } | null = null;
 
   const summary = (): AggregationSummary => ({
@@ -142,7 +142,11 @@ export async function searchWithSequentialMerge(
         reason: result.message || "degraded",
         message: result.message,
       });
-      lastDegraded = { result, sourceId: source.id };
+      // Only the FIRST source asked explains the run: later ones are tried
+      // after it already failed, so their message masks it (a later source's
+      // reason used to hide the first, real failure). Every attempt is still
+      // kept for the UI.
+      if (!firstDegraded) firstDegraded = { result, sourceId: source.id };
       continue;
     }
     const returnLegs = (result as FlightSourceResult & { returnLegs?: string })
@@ -219,13 +223,13 @@ export async function searchWithSequentialMerge(
     };
   }
 
-  if (lastDegraded) {
+  if (firstDegraded) {
     return {
       result: {
-        ...lastDegraded.result,
+        ...firstDegraded.result,
         aggregation,
       },
-      sourceId: lastDegraded.sourceId,
+      sourceId: firstDegraded.sourceId,
       attempts,
       aggregation,
       optionSources,
