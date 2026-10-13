@@ -15,6 +15,15 @@ function groupOf(deal: RankableDeal, profileCurrency: string): number {
   return upper(deal.currency) === upper(profileCurrency) ? 0 : 1;
 }
 
+// Stable partition: favorited deals float to the front keeping the active
+// order (ranking / user sort) inside each group. Array.prototype.sort is
+// stable, so the rest is untouched.
+export function favoritesFirst<T extends { isFavorite?: boolean }>(deals: T[]): T[] {
+  return [...deals].sort(
+    (a, b) => Number(b.isFavorite === true) - Number(a.isFavorite === true),
+  );
+}
+
 export function rankDeals<T extends RankableDeal>(
   deals: T[],
   profileCurrency: string,

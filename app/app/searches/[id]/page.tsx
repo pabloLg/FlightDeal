@@ -12,6 +12,8 @@ import { FilterPanel } from "@/components/ui/filter-panel";
 import { FreshnessChip } from "@/components/ui/freshness-chip";
 import { createClient } from "@/lib/supabase/server";
 import { buildBookingUrl } from "@/lib/flight-display";
+import { cityMapFor } from "@/src/domain/sources/airports";
+import { favoritesFirst } from "@/src/domain/deals/rank";
 import {
   airlineOptions,
   applyFilters,
@@ -190,13 +192,37 @@ export default async function SearchResultsPage({
 
   const { data: options } = await supabase
     .from("flight_options")
-    .select("id, price_eur, currency, outbound_legs, inbound_legs, airlines, total_duration_min, source_id, booking_links")
+    .select("id, dedupe_key, price_eur, currency, outbound_legs, inbound_legs, airlines, total_duration_min, source_id, booking_links")
     .eq("execution_id", execution.id)
     .order("price_eur", { ascending: true });
 
   const allRows = (options ?? []) as FlightOptionRow[];
   const filters = parseFilters(await searchParams);
-  const rows = applyFilters(allRows, filters);
+
+  const { data: favorites } = await supabase
+    .from("favorite_deals")
+    .select("dedupe_key")
+    .eq("search_id", id);
+  const favoriteKeys = new Set((favorites ?? []).map((f) => f.dedupe_key));
+
+  // Favorites float to the front while keeping the user's chosen sort.
+  const rows = favoritesFirst(
+    applyFilters(allRows, filters).map((r) => ({
+      ...r,
+      isFavorite: favoriteKeys.has(r.dedupe_key),
+    })),
+  );
+
+  // City names for every airport on this page, resolved once from the static
+  // dataset.
+  const codes = new Set<string>([search.origin, search.destination]);
+  for (const opt of allRows) {
+    for (const leg of [...opt.outbound_legs, ...opt.inbound_legs]) {
+      codes.add(leg.departAirport);
+      codes.add(leg.arriveAirport);
+    }
+  }
+  const cities = cityMapFor(codes);
   const bestPrice = allRows.length > 0 ? Number(allRows[0].price_eur) : null;
   const filtered =
     filters.maxPrice != null ||
@@ -451,6 +477,18 @@ export default async function SearchResultsPage({
                     bookingLinks: option.booking_links,
                   }}
                   isBestPrice={Number(option.price_eur) === bestPrice}
+                  searchId={id}
+                  cities={cities}
+                  isFavorite={option.isFavorite}
+                  searchMeta={{
+                    origin: search.origin,
+                    destination: search.destination,
+                    departDate: search.depart_date,
+                    returnDate: search.return_date,
+                    tripType: search.trip_type,
+                    cabinClass: search.cabin_class,
+                    adults: search.adults,
+                  }}
                 />
               ))
             )}

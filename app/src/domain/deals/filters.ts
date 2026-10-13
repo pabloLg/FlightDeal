@@ -2,6 +2,8 @@ import type { FlightOptionBookingLink } from "@/src/domain/sources/types";
 
 export type FlightOptionRow = {
   id: string;
+  /** Stable per-itinerary key, used to match favorites across executions. */
+  dedupe_key: string;
   price_eur: number;
   currency: string;
   outbound_legs: FlightLegLike[];

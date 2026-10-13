@@ -1,17 +1,8 @@
 import { Clock } from "lucide-react";
 
 import { fmtFreshness } from "@/lib/flight-display";
+import { isStale } from "@/src/domain/deals/date-window";
 import { cn } from "cn";
-
-// Prices older than a day may already be gone: the search cron runs daily.
-// Module-scope on purpose: calling Date.now() inside the component trips
-// react-hooks/purity, and this is rendered per request anyway.
-function isStale(checkedAt: string | null): boolean {
-  if (!checkedAt) return false;
-  const at = new Date(checkedAt).getTime();
-  if (!Number.isFinite(at)) return false;
-  return Date.now() - at > 24 * 60 * 60 * 1000;
-}
 
 // "Comprobado hace 2 h", with the stale variant the results page spells out
 // by hand. Returns nothing when there is no timestamp, so callers can use it

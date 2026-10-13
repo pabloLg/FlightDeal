@@ -16,6 +16,7 @@ function row(
 ): FlightOptionRow {
   return {
     id: `${price}-${legs}`,
+    dedupe_key: `${price}-${legs}`,
     price_eur: price,
     currency: "EUR",
     outbound_legs: Array.from({ length: legs }, (_, i) => ({

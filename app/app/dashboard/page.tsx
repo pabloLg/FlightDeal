@@ -14,9 +14,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
-import { isoDaysAgo } from "@/src/domain/deals/date-window";
+import { cityMapFor } from "@/src/domain/sources/airports";
+import { isoDaysAgo, outboundDepartDate } from "@/src/domain/deals/date-window";
 import {
   cheapestIn,
+  favoritesFirst,
   rankDeals,
   topIsProfileCurrency,
   type RankableDeal,
@@ -41,6 +43,7 @@ type FlightOptionRow = {
   id: string;
   search_id: string;
   execution_id: string;
+  dedupe_key: string;
   price_eur: number;
   currency: string;
   airlines: string[] | null;
@@ -149,11 +152,12 @@ export default async function DashboardPage() {
   }
 
   const optionsBySearch = new Map<string, FlightOptionRow[]>();
+  const availableDatesBySearch = new Map<string, Set<string>>();
   if (resultsExecution.size > 0) {
     const { data: options } = await supabase
       .from("flight_options")
       .select(
-        "id, search_id, execution_id, price_eur, currency, airlines, total_duration_min, outbound_legs, inbound_legs",
+        "id, search_id, execution_id, dedupe_key, price_eur, currency, airlines, total_duration_min, outbound_legs, inbound_legs",
       )
       .in("execution_id", [...resultsExecution.values()])
       .order("price_eur", { ascending: true });
@@ -161,8 +165,39 @@ export default async function DashboardPage() {
       const list = optionsBySearch.get(opt.search_id);
       if (list) list.push(opt);
       else optionsBySearch.set(opt.search_id, [opt]);
+
+      const outDate = outboundDepartDate(opt.outbound_legs);
+      if (outDate) {
+        const dates = availableDatesBySearch.get(opt.search_id);
+        if (dates) dates.add(outDate);
+        else availableDatesBySearch.set(opt.search_id, new Set([outDate]));
+      }
     }
   }
+
+  const { data: favorites } = await supabase
+    .from("favorite_deals")
+    .select("search_id, dedupe_key");
+  const favoriteKeys = new Set(
+    (favorites ?? []).map((f) => `${f.search_id}:${f.dedupe_key}`),
+  );
+
+  // City names for every airport the page is about to draw, resolved once from
+  // the static dataset and shared by all cards.
+  const codes = new Set<string>();
+  for (const s of searches ?? []) {
+    codes.add(s.origin);
+    codes.add(s.destination);
+  }
+  for (const list of optionsBySearch.values()) {
+    for (const opt of list) {
+      for (const leg of (opt.outbound_legs as FlightLeg[] | null) ?? []) {
+        codes.add(leg.departAirport);
+        codes.add(leg.arriveAirport);
+      }
+    }
+  }
+  const cities = cityMapFor(codes);
 
   // Cheapest option per search with the currency it was quoted in: a search
   // whose sources quote different currencies shows the profile-currency one
@@ -180,6 +215,8 @@ export default async function DashboardPage() {
     .flatMap((s) => {
       const executedAt = lastExecution.get(s.id)?.finished_at ?? null;
       const baseline = baselineBySearch.get(s.id) ?? null;
+      const availableDates = [...(availableDatesBySearch.get(s.id) ?? [])].sort();
+      const executionStatus = lastExecution.get(s.id)?.status ?? null;
       return (optionsBySearch.get(s.id) ?? []).slice(0, 1).map(
         (opt) =>
           ({
@@ -200,13 +237,19 @@ export default async function DashboardPage() {
             totalDurationMin: opt.total_duration_min,
             baseline,
             executedAt,
+            availableDates,
+            executionStatus,
+            cities,
+            isFavorite: favoriteKeys.has(`${s.id}:${opt.dedupe_key}`),
           }) satisfies DealType,
       );
     });
 
   // Amounts in different currencies are never compared: the profile-currency
   // group leads and only that group earns the global "best opportunity" badge.
-  const rankedDeals = rankDeals(deals, profileCurrency);
+  // Favorites float to the front afterwards, keeping that ranking inside each
+  // group.
+  const rankedDeals = favoritesFirst(rankDeals(deals, profileCurrency));
   const featuredIsHonest = topIsProfileCurrency(rankedDeals, profileCurrency);
 
   const trendRows = (searches ?? [])
