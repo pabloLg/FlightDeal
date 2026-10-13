@@ -4,13 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
 
-// Same five destinations, now with the alerts and trends modules reachable
-// without inventing new routes: both live on the dashboard as sections.
+// Same five destinations, now with trends on its own page and alerts reachable
+// as a dashboard section.
 const LINKS = [
   { href: "/dashboard", label: "Descubrir", match: (p: string) => p === "/dashboard" },
   { href: "/dashboard#searches", label: "Mis búsquedas", match: () => false },
   { href: "/dashboard#alerts", label: "Alertas", match: () => false },
-  { href: "/dashboard#trends", label: "Tendencias", match: () => false },
+  { href: "/trends", label: "Tendencias", match: (p: string) => p.startsWith("/trends") },
   {
     href: "/settings",
     label: "Configuración",
