@@ -5,6 +5,7 @@ import {
   filterRoutes,
   periodFrom,
   pickDashboardRoutes,
+  routeKeyOf,
   shiftIsoDate,
   sortRoutes,
   summarize,
@@ -30,6 +31,9 @@ function stat(search_id: string, stats_date: string, min: number | null): StatLi
   return { search_id, stats_date, min_price_eur: min };
 }
 
+const keyOf = (over: Partial<SearchLike> & { id: string }): string =>
+  routeKeyOf(search(over));
+
 describe("shiftIsoDate / periodFrom", () => {
   it("crosses month and year boundaries", () => {
     expect(shiftIsoDate("2026-01-31", 1)).toBe("2026-02-01");
@@ -41,6 +45,18 @@ describe("shiftIsoDate / periodFrom", () => {
     expect(periodFrom("7", TODAY)).toBe("2026-10-07");
     expect(periodFrom("30", TODAY)).toBe("2026-09-14");
     expect(periodFrom("all", TODAY)).toBeNull();
+  });
+});
+
+describe("routeKeyOf", () => {
+  it("ignores dates, keeps origin, destination and trip type", () => {
+    expect(routeKeyOf(search({ id: "s1" }))).toBe("MAD|BCN|round_trip");
+    expect(
+      routeKeyOf(search({ id: "s2", depart_date: "2026-12-01" })),
+    ).toBe("MAD|BCN|round_trip");
+    expect(
+      routeKeyOf(search({ id: "s3", trip_type: "one_way", return_date: null })),
+    ).toBe("MAD|BCN|one_way");
   });
 });
 
@@ -86,7 +102,54 @@ describe("buildTrends", () => {
     expect(route.change).toBeNull();
   });
 
-  it("ignores null prices and one-way stays apart from round-trip", () => {
+  it("fuses every search of the same route into one combined line", () => {
+    const s1 = search({ id: "s1", depart_date: "2026-11-01" });
+    const s2 = search({ id: "s2", depart_date: "2026-12-01" });
+    const routes = buildTrends(
+      [s1, s2],
+      [
+        stat("s1", "2026-10-08", 200),
+        stat("s2", "2026-10-10", 150),
+        stat("s1", "2026-10-12", 180),
+      ],
+      {},
+      { period: "7", today: TODAY },
+    );
+    expect(routes).toHaveLength(1);
+    const [route] = routes;
+    expect(route.key).toBe("MAD|BCN|round_trip");
+    expect(route.searches.map((m) => m.id)).toEqual(["s1", "s2"]);
+    expect(route.departDates).toEqual(["2026-11-01", "2026-12-01"]);
+    expect(route.days).toEqual([
+      { date: "2026-10-08", min: 200 },
+      { date: "2026-10-10", min: 150 },
+      { date: "2026-10-12", min: 180 },
+    ]);
+    expect(route.change).toBeCloseTo(-10);
+  });
+
+  it("keeps the cheapest observation of the route on the same day", () => {
+    const [route] = buildTrends(
+      [search({ id: "s1" }), search({ id: "s2" })],
+      [stat("s1", "2026-10-12", 150), stat("s2", "2026-10-12", 120)],
+      {},
+      { period: "7", today: TODAY },
+    );
+    expect(route.days).toEqual([{ date: "2026-10-12", min: 120 }]);
+  });
+
+  it("links to the search with the latest observation and reports the latest check", () => {
+    const [route] = buildTrends(
+      [search({ id: "s1" }), search({ id: "s2" })],
+      [stat("s1", "2026-10-08", 200), stat("s2", "2026-10-12", 150)],
+      { s1: "2026-10-08T05:00:00Z", s2: "2026-10-12T06:03:00Z" },
+      { period: "7", today: TODAY },
+    );
+    expect(route.latestSearchId).toBe("s2");
+    expect(route.lastCheckAt).toBe("2026-10-12T06:03:00Z");
+  });
+
+  it("ignores null prices and keeps one-way apart from round-trip", () => {
     const ow = search({ id: "s2", trip_type: "one_way", return_date: null });
     const routes = buildTrends(
       [s, ow],
@@ -99,8 +162,19 @@ describe("buildTrends", () => {
       { period: "7", today: TODAY },
     );
     expect(routes).toHaveLength(2);
-    expect(routes.find((r) => r.search.id === "s1")!.days).toHaveLength(1);
-    expect(routes.find((r) => r.search.id === "s2")!.search.trip_type).toBe("one_way");
+    expect(routes.find((r) => r.tripType === "round_trip")!.days).toHaveLength(1);
+    expect(routes.find((r) => r.tripType === "one_way")!.tripType).toBe("one_way");
+  });
+
+  it("drops stats whose search is not in the list", () => {
+    const routes = buildTrends(
+      [s],
+      [stat("s1", "2026-10-12", 150), stat("ghost", "2026-10-12", 10)],
+      {},
+      { period: "7", today: TODAY },
+    );
+    expect(routes).toHaveLength(1);
+    expect(routes[0].days).toEqual([{ date: "2026-10-12", min: 150 }]);
   });
 
   it("covers the whole history in the 'all' period", () => {
@@ -116,11 +190,12 @@ describe("buildTrends", () => {
 });
 
 describe("summarize", () => {
-  it("counts only demonstrated drops and the period minimum", () => {
+  it("counts fused routes, not searches", () => {
     const routes = buildTrends(
-      [search({ id: "a" }), search({ id: "b", destination: "LIS" })],
+      [search({ id: "a" }), search({ id: "a2" }), search({ id: "b", destination: "LIS" })],
       [
         stat("a", "2026-10-08", 200),
+        stat("a2", "2026-10-09", 180),
         stat("a", "2026-10-12", 150),
         stat("b", "2026-10-12", 400),
       ],
@@ -136,6 +211,9 @@ describe("summarize", () => {
 });
 
 describe("filterRoutes / sortRoutes", () => {
+  const kA = keyOf({ id: "a" });
+  const kB = keyOf({ id: "b", destination: "LIS" });
+  const kC = keyOf({ id: "c", origin: "BER", destination: "BCN" });
   const routes = buildTrends(
     [
       search({ id: "a" }),
@@ -154,22 +232,27 @@ describe("filterRoutes / sortRoutes", () => {
   );
 
   it("filters by origin and destination", () => {
-    expect(filterRoutes(routes, { origin: "", destination: "BCN" }).map((r) => r.search.id))
-      .toEqual(["a", "c"]);
-    expect(filterRoutes(routes, { origin: "MAD", destination: "" }).map((r) => r.search.id))
-      .toEqual(["a", "b"]);
+    expect(
+      filterRoutes(routes, { origin: "", destination: "BCN" }).map((r) => r.key),
+    ).toEqual([kA, kC]);
+    expect(
+      filterRoutes(routes, { origin: "MAD", destination: "" }).map((r) => r.key),
+    ).toEqual([kA, kB]);
   });
 
   it("sorts by min, drop (nulls last) and recency", () => {
-    expect(sortRoutes(routes, "min").map((r) => r.search.id)).toEqual(["c", "b", "a"]);
+    expect(sortRoutes(routes, "min").map((r) => r.key)).toEqual([kC, kB, kA]);
     // c = +33%, a = -25%, b has no change -> last.
-    expect(sortRoutes(routes, "drop").map((r) => r.search.id)).toEqual(["a", "c", "b"]);
-    expect(sortRoutes(routes, "recent").map((r) => r.search.id)).toEqual(["a", "b", "c"]);
+    expect(sortRoutes(routes, "drop").map((r) => r.key)).toEqual([kA, kC, kB]);
+    expect(sortRoutes(routes, "recent").map((r) => r.key)).toEqual([kA, kB, kC]);
   });
 });
 
 describe("pickDashboardRoutes", () => {
   it("prefers recent routes and, among them, the ones with a demonstrated drop", () => {
+    const kDrop = keyOf({ id: "recent-drop" });
+    const kFlat = keyOf({ id: "recent-flat", destination: "LIS" });
+    const kOld = keyOf({ id: "old", origin: "BER" });
     const routes = buildTrends(
       [
         search({ id: "recent-drop" }),
@@ -186,28 +269,30 @@ describe("pickDashboardRoutes", () => {
       {},
       { period: "all", today: TODAY },
     );
-    expect(pickDashboardRoutes(routes, TODAY).map((r) => r.search.id)).toEqual([
-      "recent-drop",
-      "recent-flat",
-      "old",
+    expect(pickDashboardRoutes(routes, TODAY).map((r) => r.key)).toEqual([
+      kDrop,
+      kFlat,
+      kOld,
     ]);
   });
 
   it("falls back to the most recent routes when nothing dropped", () => {
+    const kA = keyOf({ id: "a" });
+    const kB = keyOf({ id: "b", destination: "LIS" });
     const routes = buildTrends(
       [search({ id: "a" }), search({ id: "b", destination: "LIS" })],
       [stat("a", "2026-10-10", 100), stat("b", "2026-10-12", 200)],
       {},
       { period: "7", today: TODAY },
     );
-    expect(pickDashboardRoutes(routes, TODAY).map((r) => r.search.id)).toEqual(["b", "a"]);
+    expect(pickDashboardRoutes(routes, TODAY).map((r) => r.key)).toEqual([kB, kA]);
   });
 
   it("caps the list at the limit", () => {
     const ids = ["a", "b", "c", "d", "e"];
     const dates = ["2026-10-09", "2026-10-10", "2026-10-11", "2026-10-12", "2026-10-13"];
     const routes = buildTrends(
-      ids.map((id) => search({ id })),
+      ids.map((id, i) => search({ id, destination: `D${i}` })),
       ids.map((id, i) => stat(id, dates[i], 100 + i)),
       {},
       { period: "7", today: TODAY },

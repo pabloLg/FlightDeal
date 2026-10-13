@@ -3,6 +3,11 @@
 // one min/avg/max per search per day, in EUR, so every number here is EUR and
 // nothing is compared across currencies. No point between two observations is
 // ever invented: a series is only the days that were actually recorded.
+//
+// A route is the city pair plus the trip type, NOT a single search: several
+// searches on the same pair (different dates, cabins...) are one card whose
+// series is the per-day minimum across all of them. A one-way is never folded
+// into a round-trip.
 
 export type TrendPeriod = "7" | "30" | "all";
 
@@ -24,8 +29,18 @@ export type StatLike = {
 };
 
 export type RouteTrend = {
-  search: SearchLike;
-  /** Days with an observed min, ascending, inside the period. */
+  /** Route identity: `${origin}|${destination}|${trip_type}`. */
+  key: string;
+  origin: string;
+  destination: string;
+  tripType: string;
+  /** Member searches, in the order they arrived (the page sends newest first). */
+  searches: SearchLike[];
+  /** Distinct departure dates among members, ascending (nulls dropped). */
+  departDates: string[];
+  /** Member to link to: the one with the latest observation in the period. */
+  latestSearchId: string;
+  /** Days with the combined min, ascending, inside the period. */
   days: { date: string; min: number }[];
   minPeriod: number;
   firstMin: number;
@@ -37,6 +52,15 @@ export type RouteTrend = {
   /** Real last check (search_executions.finished_at), distinct from stats_date. */
   lastCheckAt: string | null;
 };
+
+// Two searches are the same route when origin, destination and trip type match;
+// the departure dates are deliberately not part of the key so their series add
+// up to one line.
+export function routeKeyOf(
+  s: Pick<SearchLike, "origin" | "destination" | "trip_type">,
+): string {
+  return `${s.origin}|${s.destination}|${s.trip_type}`;
+}
 
 export type TrendIndicators = {
   routeCount: number;
@@ -60,10 +84,10 @@ export function periodFrom(period: TrendPeriod, today: string): string | null {
   return shiftIsoDate(today, period === "7" ? -6 : -29);
 }
 
-// One route per search: a search already fixes the comparable conditions
-// (origin, destination, departure/return dates, trip type), so two searches on
-// the same city pair with different dates stay two separate routes and a
-// one-way is never folded into a round-trip.
+// One route per city pair + trip type. Every search on that route contributes
+// its daily minimum to the same series; a day observed by several searches
+// keeps the cheapest one. The variation is over the combined line, not a single
+// flight, and it is labelled as the observed daily minimum.
 export function buildTrends(
   searches: SearchLike[],
   stats: StatLike[],
@@ -71,33 +95,50 @@ export function buildTrends(
   options: { period: TrendPeriod; today: string },
 ): RouteTrend[] {
   const from = periodFrom(options.period, options.today);
-  const bySearch = new Map<string, { date: string; min: number }[]>();
+  const searchById = new Map(searches.map((s) => [s.id, s]));
 
+  // Group searches by route, preserving arrival order (newest first).
+  const groups = new Map<string, { members: SearchLike[] }>();
+  for (const s of searches) {
+    const key = routeKeyOf(s);
+    const g = groups.get(key);
+    if (g) g.members.push(s);
+    else groups.set(key, { members: [s] });
+  }
+
+  // route + day -> min across member searches; and per search, its latest day.
+  const byRoute = new Map<string, Map<string, number>>();
+  const lastDayBySearch = new Map<string, string>();
   for (const s of stats) {
     if (s.min_price_eur == null) continue;
     if (s.stats_date > options.today) continue;
     if (from !== null && s.stats_date < from) continue;
-    const point = { date: s.stats_date, min: Number(s.min_price_eur) };
-    const list = bySearch.get(s.search_id);
-    if (list) list.push(point);
-    else bySearch.set(s.search_id, [point]);
+    const search = searchById.get(s.search_id);
+    if (!search) continue;
+
+    const last = lastDayBySearch.get(s.search_id);
+    if (last === undefined || s.stats_date > last)
+      lastDayBySearch.set(s.search_id, s.stats_date);
+
+    const key = routeKeyOf(search);
+    let byDate = byRoute.get(key);
+    if (!byDate) {
+      byDate = new Map();
+      byRoute.set(key, byDate);
+    }
+    const v = Number(s.min_price_eur);
+    const prev = byDate.get(s.stats_date);
+    byDate.set(s.stats_date, prev === undefined ? v : Math.min(prev, v));
   }
 
   const routes: RouteTrend[] = [];
-  for (const search of searches) {
-    const raw = bySearch.get(search.id);
-    if (!raw || raw.length === 0) continue;
+  for (const [key, { members }] of groups) {
+    const byDate = byRoute.get(key);
+    if (!byDate || byDate.size === 0) continue;
 
-    raw.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    // The unique (search_id, stats_date) constraint guarantees one row per day;
-    // collapsing duplicates keeps the series a true daily minimum if it ever
-    // changes.
-    const days: { date: string; min: number }[] = [];
-    for (const d of raw) {
-      const prev = days[days.length - 1];
-      if (prev && prev.date === d.date) prev.min = Math.min(prev.min, d.min);
-      else days.push({ ...d });
-    }
+    const days = [...byDate.entries()]
+      .map(([date, min]) => ({ date, min }))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
     const first = days[0];
     const last = days[days.length - 1];
@@ -106,8 +147,37 @@ export function buildTrends(
         ? ((last.min - first.min) / first.min) * 100
         : null;
 
+    // Link target (latest observation) and the last finished check, both across
+    // every search of the route. Ties keep the newest member.
+    let latestSearchId = members[0].id;
+    let latestDay = "";
+    let lastCheckAt: string | null = null;
+    for (const m of members) {
+      const day = lastDayBySearch.get(m.id);
+      if (day && day > latestDay) {
+        latestDay = day;
+        latestSearchId = m.id;
+      }
+      const t = lastCheckBySearch[m.id] ?? null;
+      if (t && (lastCheckAt === null || t > lastCheckAt)) lastCheckAt = t;
+    }
+
+    const departDates = [
+      ...new Set(
+        members
+          .map((m) => m.depart_date)
+          .filter((d): d is string => d != null),
+      ),
+    ].sort();
+
     routes.push({
-      search,
+      key,
+      origin: members[0].origin,
+      destination: members[0].destination,
+      tripType: members[0].trip_type,
+      searches: members,
+      departDates,
+      latestSearchId,
       days,
       minPeriod: Math.min(...days.map((d) => d.min)),
       firstMin: first.min,
@@ -115,7 +185,7 @@ export function buildTrends(
       firstDate: first.date,
       lastDate: last.date,
       change,
-      lastCheckAt: lastCheckBySearch[search.id] ?? null,
+      lastCheckAt,
     });
   }
   return routes;
@@ -134,8 +204,8 @@ export type RouteFilter = { origin: string; destination: string };
 export function filterRoutes(routes: RouteTrend[], f: RouteFilter): RouteTrend[] {
   return routes.filter(
     (r) =>
-      (!f.origin || r.search.origin === f.origin) &&
-      (!f.destination || r.search.destination === f.destination),
+      (!f.origin || r.origin === f.origin) &&
+      (!f.destination || r.destination === f.destination),
   );
 }
 

@@ -20,14 +20,18 @@ comparables), `search_executions.finished_at` (ultima comprobacion real) y
 
 ## Reglas
 
-- **Ruta = una busqueda.** Sus condiciones (origen, destino, fechas salida y
-  regreso, tipo de viaje) ya la hacen comparable. Dos busquedas del mismo par de
-  ciudades con fechas distintas son dos tarjetas; una ida nunca se fusiona con
-  una ida y vuelta.
+- **Ruta = par de ciudades + tipo de viaje** (`origen|destino|trip_type`).
+  Varias busquedas de la misma ruta (fechas distintas, cabina o escalas
+  distintas) son **una sola tarjeta**: su serie es el minimo diario entre todas
+  ellas y muestra la progresion acumulada, incluidas las busquedas historicas
+  (`enabled = false`). Una ida nunca se fusiona con una ida y vuelta. La
+  cabecera muestra cuantas busquedas agrupa y el rango de fechas de salida; el
+  enlace «Ver busqueda» apunta a la del ultimo dia observado.
 - **Periodos** por fecha ISO: 7 dias = hoy + los 6 anteriores; 30 dias = hoy + los
   29 anteriores; «Todo» = sin cota inferior. Se excluye siempre el futuro.
 - **Variacion** = `(ultimoMin - primerMin) / primerMin` con el minimo diario del
-  primer y del ultimo dia con datos dentro del periodo, mismo `search_id`.
+  primer y del ultimo dia con datos dentro del periodo, sobre la serie fusionada
+  de la ruta.
   `null` con menos de dos dias distintos. Se etiqueta como variacion del minimo
   diario observado: no es el mismo vuelo ni implica disponibilidad.
 - **Indicadores** (rutas con datos, minimo observado, rutas con bajada) se
@@ -55,8 +59,8 @@ en la tarjeta. Enlace «Ver todas las tendencias» a `/trends`.
 
 ## Verificacion
 
-- `npm run typecheck`, `npm run lint` y `npm run build`: OK. `npm test`: 251 tests
-  en 31 ficheros (14 nuevos de Tendencias).
+- `npm run typecheck`, `npm run lint` y `npm run build`: OK. `npm test`: 256 tests
+  en 31 ficheros (19 de Tendencias).
 - End-to-end en local (Supabase local `127.0.0.1:54321`, usuario demo) con datos
   de variedad: cambiar de periodo recalcula tarjetas e indicadores (7 d / 30 d /
   «Todo»), las rutas con un solo dia muestran «Historico insuficiente» y el
