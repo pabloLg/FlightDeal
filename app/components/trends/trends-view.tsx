@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { PriceArea } from "@/components/charts/price-area";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "cn";
@@ -56,58 +57,6 @@ function Stat({ label, value, foot }: { label: string; value: string; foot: stri
       </div>
       <div className="mt-1 text-xs text-muted-foreground">{foot}</div>
     </div>
-  );
-}
-
-// Plain SVG of the observed daily minimums: the only points drawn are the ones
-// that were actually stored. With fewer than two days there is nothing to
-// connect, so the card says so instead of drawing a flat or interpolated line.
-function Sparkline({ days }: { days: { date: string; min: number }[] }) {
-  if (days.length < 2) {
-    return (
-      <p className="rounded-lg bg-sky px-3 py-3 text-xs text-muted-foreground">
-        Histórico insuficiente para mostrar la evolución.
-      </p>
-    );
-  }
-  const w = 300;
-  const xs = (i: number) => 12 + (i * (w - 24)) / (days.length - 1);
-  const mn = Math.min(...days.map((d) => d.min));
-  const mx = Math.max(...days.map((d) => d.min));
-  const range = mx - mn || 1;
-  const ys = (v: number) => 8 + ((mx - v) / range) * 44;
-  const pts = days.map((d, i) => `${xs(i)},${ys(d.min)}`).join(" ");
-
-  return (
-    <svg
-      className="h-16 w-full"
-      viewBox={`0 0 ${w} 60`}
-      role="img"
-      aria-label="Evolución del mínimo diario observado, en EUR"
-    >
-      {[16, 38, 60].map((y) => (
-        <line
-          key={y}
-          x1="5"
-          x2="295"
-          y1={y}
-          y2={y}
-          stroke="var(--border)"
-          strokeDasharray="3 4"
-        />
-      ))}
-      <polyline
-        points={pts}
-        fill="none"
-        stroke="var(--brand)"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {days.map((d, i) => (
-        <circle key={d.date} cx={xs(i)} cy={ys(d.min)} r="3" fill="var(--brand)" />
-      ))}
-    </svg>
   );
 }
 
@@ -197,12 +146,12 @@ function RouteCard({
         </div>
       </div>
 
-      <div className="px-4 pt-2">
-        <Sparkline days={days} />
-      </div>
-      <div className="flex items-center justify-between px-4 pb-2 text-xs text-muted-foreground">
-        <span>{fmtDay(days[0].date)}</span>
-        <span>{fmtDay(days[days.length - 1].date)}</span>
+      <div className="px-4 pt-3">
+        <PriceArea
+          days={days}
+          habitual={null}
+          emptyText="Histórico insuficiente para mostrar la evolución."
+        />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">

@@ -5,51 +5,87 @@ import { AlertHistory, PriceHistory } from "./price-history";
 
 afterEach(cleanup);
 
-const stats = [
-  {
-    stats_date: "2026-10-01",
-    min_price_eur: 60,
-    max_price_eur: 95,
-    avg_price_eur: 77.5,
-    observations: 4,
-  },
-  {
-    stats_date: "2026-10-02",
-    min_price_eur: 89,
-    max_price_eur: 240,
-    avg_price_eur: 146,
-    observations: 11,
-  },
+const days = [
+  { date: "2026-10-01", min: 60, max: 95, avg: 77.5, observations: 4 },
+  { date: "2026-10-02", min: 89, max: 240, avg: 146, observations: 11 },
 ];
 
 describe("PriceHistory", () => {
-  it("shows the observed range, not an invented point", () => {
-    render(<PriceHistory stats={stats} currency="EUR" currentPrice={95} />);
-    expect(screen.getByText(/60\.00 – 95\.00 EUR/)).toBeTruthy();
-    expect(screen.getByText(/89\.00 – 240\.00 EUR/)).toBeTruthy();
+  it("summarises the combined observed range, not an invented point", () => {
+    render(
+      <PriceHistory
+        days={days}
+        currency="EUR"
+        currentPrice={95}
+        habitual={90}
+        searchCount={2}
+      />,
+    );
+    expect(screen.getByText(/mínimo del período 60\.00 EUR/)).toBeTruthy();
+    expect(screen.getByText(/rango 60\.00–240\.00 EUR/)).toBeTruthy();
+    expect(screen.getByText(/2 búsquedas de esta ruta combinadas/)).toBeTruthy();
   });
 
-  it("labels the average and says it is not a prediction", () => {
-    render(<PriceHistory stats={stats} currency="EUR" currentPrice={95} />);
+  it("compares the current price against the route's usual minimum", () => {
+    render(
+      <PriceHistory
+        days={days}
+        currency="EUR"
+        currentPrice={45}
+        habitual={90}
+        searchCount={1}
+      />,
+    );
+    expect(screen.getByText(/50% frente al habitual/)).toBeTruthy();
+  });
+
+  it("says the history is not a prediction", () => {
+    render(
+      <PriceHistory
+        days={days}
+        currency="EUR"
+        currentPrice={95}
+        habitual={90}
+        searchCount={1}
+      />,
+    );
     expect(screen.getByText(/Histórico observado/)).toBeTruthy();
   });
 
   it("warns about the stored currency when the profile uses another one", () => {
-    render(<PriceHistory stats={stats} currency="USD" currentPrice={95} />);
+    render(
+      <PriceHistory
+        days={days}
+        currency="USD"
+        currentPrice={95}
+        habitual={90}
+        searchCount={1}
+      />,
+    );
     expect(screen.getByText(/Histórico disponible en EUR/)).toBeTruthy();
   });
 
   it("stays silent about the currency when the profile is in EUR", () => {
-    render(<PriceHistory stats={stats} currency="EUR" currentPrice={95} />);
+    render(
+      <PriceHistory
+        days={days}
+        currency="EUR"
+        currentPrice={95}
+        habitual={90}
+        searchCount={1}
+      />,
+    );
     expect(screen.queryByText(/Histórico disponible en EUR/)).toBeNull();
   });
 
-  it("asks for more runs instead of drawing empty bars", () => {
+  it("asks for more runs instead of drawing an empty line", () => {
     render(
       <PriceHistory
-        stats={[{ ...stats[0], observations: 0 }]}
+        days={[]}
         currency="EUR"
         currentPrice={null}
+        habitual={null}
+        searchCount={1}
       />,
     );
     expect(screen.getByText(/Sin observaciones todavía/)).toBeTruthy();

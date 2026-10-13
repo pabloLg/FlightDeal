@@ -78,7 +78,10 @@ export function airlineOptions(rows: FlightOptionRow[]): string[] {
     for (const l of r.outbound_legs) byCode.set(l.airline, l.airlineName ?? l.airline);
     for (const a of r.airlines) if (!byCode.has(a)) byCode.set(a, a);
   }
-  return [...byCode.values()].sort();
+  // The map is keyed by code but valued by name: two codes can share a name
+  // (e.g. a leg's "VY" -> "Vueling" and airlines carrying "Vueling"), so the
+  // values are deduped before they become <option> keys.
+  return [...new Set(byCode.values())].sort();
 }
 
 export function applyFilters(

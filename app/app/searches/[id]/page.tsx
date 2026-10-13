@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { AlertHistory, PriceHistory, type DispatchRow, type PriceStatRow } from "@/components/deals/price-history";
+import { AlertHistory, PriceHistory, type DispatchRow } from "@/components/deals/price-history";
 import { FlightDealCard } from "@/components/deals/flight-deal-card";
 import { SearchCalendar } from "@/components/deals/search-calendar";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 import { buildBookingUrl } from "@/lib/flight-display";
 import { cityMapFor } from "@/src/domain/sources/airports";
 import { favoritesFirst } from "@/src/domain/deals/rank";
+import { combineDailyStats, routineAverage, type RouteStatRow } from "@/src/domain/deals/route-history";
 import { availableDatesOf, resolveDateView } from "@/src/domain/deals/date-view";
 import { outboundDepartDate } from "@/src/domain/deals/date-window";
 import {
@@ -289,13 +290,26 @@ export default async function SearchResultsPage({
     (selectedDate == null || selectedIsLatest);
   const baseHref = selectedDate ? `/searches/${id}?fecha=${selectedDate}` : `/searches/${id}`;
 
+  // Route history, not just this search: every search on the same origin +
+  // destination + trip type (enabled or not) feeds the chart. RLS already scopes
+  // both tables to the signed-in owner.
+  const { data: routeSearches } = await supabase
+    .from("searches")
+    .select("id")
+    .eq("profile_id", user.id)
+    .eq("origin", search.origin)
+    .eq("destination", search.destination)
+    .eq("trip_type", search.trip_type);
+  const routeSearchIds = (routeSearches ?? []).map((s) => s.id);
+
   const { data: stats } = await supabase
     .from("price_stats_daily")
     .select("stats_date, min_price_eur, max_price_eur, avg_price_eur, observations")
-    .eq("search_id", id)
+    .in("search_id", routeSearchIds.length > 0 ? routeSearchIds : [id])
     .order("stats_date", { ascending: true });
 
-  const statsRows = (stats ?? []) as PriceStatRow[];
+  const historyDays = combineDailyStats((stats ?? []) as RouteStatRow[]);
+  const habitual = routineAverage(historyDays);
 
   // Only this search's dispatches: the alerts_edge join is filtered, so RLS
   // (which scopes by owner) is not enough on its own to scope by search.
@@ -540,16 +554,18 @@ export default async function SearchResultsPage({
           <CardTitle>Histórico de precios</CardTitle>
         </CardHeader>
         <CardContent>
-          {statsRows.length === 0 ? (
+          {historyDays.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Aún no hay datos históricos. Los agregados diarios (mínimo, máximo
-              y media) aparecerán tras las próximas ejecuciones de esta búsqueda.
+              Aún no hay datos históricos. El mínimo diario observado aparecerá
+              tras las próximas ejecuciones de esta ruta.
             </p>
           ) : (
             <PriceHistory
-              stats={statsRows}
+              days={historyDays}
               currency={currency}
               currentPrice={rows[0]?.price_eur ?? null}
+              habitual={habitual}
+              searchCount={routeSearchIds.length}
             />
           )}
         </CardContent>
