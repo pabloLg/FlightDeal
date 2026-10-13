@@ -30,3 +30,4 @@ begin
   get diagnostics v_released = row_count;
   return v_released;
 end;
+$$;

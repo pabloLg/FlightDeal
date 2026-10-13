@@ -3,24 +3,19 @@ import { Flame, Plane } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PriceTag } from "@/components/ui/price-tag";
+import { fmtDuration } from "@/lib/flight-display";
 import type {
   FlightLeg,
   FlightOptionBookingLink,
 } from "@/src/domain/sources/types";
 import { splitPostData } from "@/src/domain/sources/booking-links";
+import { FavoriteButton } from "./favorite-button";
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("es-ES", {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function fmtDuration(min: number | null): string {
-  if (!min || !Number.isFinite(min) || min <= 0) return "—";
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
 /** Legacy rows stored the code inside flightNumber ("UX573"), the parser no longer does. */
@@ -53,7 +48,15 @@ function sourceLabel(source: string | null): string | null {
   }
 }
 
-function LegTimeline({ legs, label }: { legs: FlightLeg[]; label: string }) {
+function LegTimeline({
+  legs,
+  label,
+  cities,
+}: {
+  legs: FlightLeg[];
+  label: string;
+  cities: Record<string, string>;
+}) {
   return (
     <div>
       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -72,7 +75,9 @@ function LegTimeline({ legs, label }: { legs: FlightLeg[]; label: string }) {
               </span>
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {flightLabel(leg)} · {fmtDuration(leg.durationMin)}
+              {leg.departAirport} {cities[leg.departAirport] ?? ""} →{" "}
+              {leg.arriveAirport} {cities[leg.arriveAirport] ?? ""} ·{" "}
+              {flightLabel(leg)}
             </p>
           </li>
         ))}
@@ -84,6 +89,8 @@ function LegTimeline({ legs, label }: { legs: FlightLeg[]; label: string }) {
 export function FlightDealCard({
   deal,
   isBestPrice,
+  cities,
+  isFavorite,
 }: {
   deal: {
     id: string;
@@ -92,22 +99,23 @@ export function FlightDealCard({
     outboundLegs: FlightLeg[];
     inboundLegs: FlightLeg[];
     bookingUrl: string | null;
-    /** Source that observed this option (tarjeta por fuente). */
     source: string | null;
-    /** Per-provider purchase links (fase booking). Null when none fetched. */
     bookingLinks: FlightOptionBookingLink[] | null;
   };
-  isBestPrice: boolean;
+  isBestPrice?: boolean;
+  /** IATA -> city, resolved on the server from the static dataset. */
+  cities: Record<string, string>;
+  isFavorite?: boolean;
 }) {
   const legs = deal.outboundLegs;
-  const numbers = [
-    ...new Set(legs.map(bareNumber).filter((n) => n !== "")),
-  ];
+  const numbers = [...new Set(legs.map(bareNumber).filter(Boolean))];
   const carriers = [
-    ...new Set(legs.map((l) => l.airlineName || l.airline).filter(Boolean)),
+    ...new Set(legs.map((l) => l.airlineName ?? l.airline).filter(Boolean)),
   ];
   const totalLegs = legs.length + deal.inboundLegs.length;
   const stops = numbers.length === 0 ? null : Math.max(0, legs.length - 1);
+  const first = legs[0];
+  const last = legs.at(-1);
   // Provider links with their decoded form field (post handoffs only). A post
   // link without a valid body is dropped: the generic link stays as fallback.
   const providerLinks = (deal.bookingLinks ?? [])
@@ -142,10 +150,12 @@ export function FlightDealCard({
                 {numbers.join(" · ")}
               </div>
             )}
-            <div className="mt-1 text-xs text-muted-foreground">
-              {legs.length > 0 &&
-                `${legs[0].departAirport} → ${legs.at(-1)?.arriveAirport}`}
-            </div>
+            {first && last ? (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {first.departAirport} ({cities[first.departAirport] ?? "—"}) →{" "}
+                {last.arriveAirport} ({cities[last.arriveAirport] ?? "—"})
+              </div>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             {isBestPrice && (
@@ -155,6 +165,10 @@ export function FlightDealCard({
               </Badge>
             )}
             <PriceTag price={deal.price} currency={deal.currency} size="md" />
+            <FavoriteButton
+              optionId={deal.id}
+              initialFavorited={isFavorite ?? false}
+            />
           </div>
         </div>
 
@@ -180,9 +194,13 @@ export function FlightDealCard({
             Itinerario
           </summary>
           <div className="mt-2 flex flex-col gap-3">
-            <LegTimeline legs={legs} label="Ida" />
+            <LegTimeline legs={legs} label="Ida" cities={cities} />
             {deal.inboundLegs.length > 0 && (
-              <LegTimeline legs={deal.inboundLegs} label="Regreso" />
+              <LegTimeline
+                legs={deal.inboundLegs}
+                label="Regreso"
+                cities={cities}
+              />
             )}
           </div>
         </details>

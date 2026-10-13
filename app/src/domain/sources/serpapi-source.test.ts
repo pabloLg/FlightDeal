@@ -190,13 +190,42 @@ describe("SerpApiFlightSource", () => {
     expect(result.message).toBe("no_flights");
   });
 
-  it("degrades on flexDays because SerpAPI has no flexible-date search", async () => {
+  it("enumerates the flex window with one request per date, no enrichment", async () => {
     const { fetcher, seen } = stubFetcher(fixture);
-    const result = await source(fetcher).search({ ...params, flexDays: 3 });
+    const result = await source(fetcher).search({ ...params, flexDays: 1 });
+
+    expect(result.degraded).toBe(false);
+    // Base date + one each side, one base request per day: the round-trip
+    // enrichment (return legs, booking) is skipped in flex mode.
+    expect(seen).toHaveLength(3);
+    expect(
+      seen.map((r) => new URL(r.url).searchParams.get("outbound_date")),
+    ).toEqual(["2026-10-15", "2026-10-16", "2026-10-14"]);
+    expect(result.options).toHaveLength(9);
+    expect((result as { returnLegs?: string }).returnLegs).toBe("flex_window");
+  });
+
+  it("keeps the days that answered when other days degrade", async () => {
+    let calls = 0;
+    const fetcher: JsonFetcher = async () => {
+      calls++;
+      return calls === 1
+        ? { status: 200, body: fixture }
+        : { status: 429, body: "Too Many Requests" };
+    };
+    const result = await source(fetcher).search({ ...params, flexDays: 1 });
+
+    expect(result.degraded).toBe(false);
+    expect(result.options).toHaveLength(3);
+  });
+
+  it("degrades with the first day's reason when every day fails", async () => {
+    const { fetcher } = stubFetcher("Too Many Requests", 429);
+    const result = await source(fetcher).search({ ...params, flexDays: 1 });
 
     expect(result.degraded).toBe(true);
-    expect(result.message).toBe("flex_unsupported");
-    expect(seen).toHaveLength(0);
+    expect(result.message).toBe("flex_partial:http_429");
+    expect(result.options).toEqual([]);
   });
 
   it("degrades when the transport throws", async () => {

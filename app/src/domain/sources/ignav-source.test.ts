@@ -171,13 +171,29 @@ describe("IgnavFlightSource", () => {
     expect(result.message).toBe("no_flights");
   });
 
-  it("degrades on flexDays because flexible search is not implemented", async () => {
+  it("enumerates the flex window with one request per date, no booking links", async () => {
     const { fetcher, seen } = stubFetcher(fixture);
-    const result = await source(fetcher).search({ ...params, flexDays: 3 });
+    const result = await source(fetcher).search({ ...params, flexDays: 1 });
+
+    expect(result.degraded).toBe(false);
+    // Base date + one each side, one fare search per day; booking links are
+    // single-pick extras and are skipped in flex mode.
+    expect(seen).toHaveLength(3);
+    expect(seen.map((r) => JSON.parse(r.body ?? "{}").departure_date)).toEqual([
+      "2026-10-15",
+      "2026-10-16",
+      "2026-10-14",
+    ]);
+    expect(result.options).toHaveLength(6);
+  });
+
+  it("degrades flex with the first day's reason when every day fails", async () => {
+    const { fetcher } = stubFetcher(JSON.stringify({ error: { type: "x" } }), 429);
+    const result = await source(fetcher).search({ ...params, flexDays: 1 });
 
     expect(result.degraded).toBe(true);
-    expect(result.message).toBe("flex_unsupported");
-    expect(seen).toHaveLength(0);
+    expect(result.message).toBe("flex_partial:http_429");
+    expect(result.options).toEqual([]);
   });
 
   it("degrades when the transport throws", async () => {

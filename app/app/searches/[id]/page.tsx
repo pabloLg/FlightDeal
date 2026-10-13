@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { AlertHistory, PriceHistory, type DispatchRow, type PriceStatRow } from "@/components/deals/price-history";
 import { FlightDealCard } from "@/components/deals/flight-deal-card";
+import { SearchCalendar } from "@/components/deals/search-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +13,10 @@ import { FilterPanel } from "@/components/ui/filter-panel";
 import { FreshnessChip } from "@/components/ui/freshness-chip";
 import { createClient } from "@/lib/supabase/server";
 import { buildBookingUrl } from "@/lib/flight-display";
+import { cityMapFor } from "@/src/domain/sources/airports";
+import { favoritesFirst } from "@/src/domain/deals/rank";
+import { availableDatesOf, resolveDateView } from "@/src/domain/deals/date-view";
+import { outboundDepartDate } from "@/src/domain/deals/date-window";
 import {
   airlineOptions,
   applyFilters,
@@ -32,6 +37,16 @@ type SourceTrace = {
     included: boolean;
   }[];
 };
+
+type ExecutionRow = {
+  id: string;
+  status: string;
+  finished_at: string | null;
+  error_message: string | null;
+  raw_result: unknown;
+};
+
+type OptionRow = FlightOptionRow & { execution_id: string };
 
 const SOURCE_LABEL: Record<string, string> = {
   google_flights: "Google Flights",
@@ -152,6 +167,7 @@ export default async function SearchResultsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -174,29 +190,72 @@ export default async function SearchResultsPage({
     .single();
   const currency = profile?.currency ?? "EUR";
 
-  const { data: execution } = await supabase
+  const { data: executions } = await supabase
     .from("search_executions")
     .select("id, status, finished_at, error_message, raw_result")
     .eq("search_id", id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const failed = execution?.status === "failed";
-  if (
-    !execution ||
-    (!failed && execution.status !== "completed" && execution.status !== "degraded")
-  )
-    notFound();
+    .order("created_at", { ascending: false });
+  const execList = (executions ?? []) as ExecutionRow[];
+  if (execList.length === 0) notFound();
+  const latest = execList[0];
 
+  // Options belong to the search, not to a single run: the dedupe key embeds the
+  // departure date, so every day the user has searched keeps its own rows.
   const { data: options } = await supabase
     .from("flight_options")
-    .select("id, price_eur, currency, outbound_legs, inbound_legs, airlines, total_duration_min, source_id, booking_links")
-    .eq("execution_id", execution.id)
+    .select(
+      "id, execution_id, dedupe_key, price_eur, currency, outbound_legs, inbound_legs, airlines, total_duration_min, source_id, booking_links",
+    )
+    .eq("search_id", id)
     .order("price_eur", { ascending: true });
+  const allOptions = (options ?? []) as OptionRow[];
 
-  const allRows = (options ?? []) as FlightOptionRow[];
-  const filters = parseFilters(await searchParams);
-  const rows = applyFilters(allRows, filters);
+  const availableDates = availableDatesOf(allOptions);
+  const latestDate =
+    outboundDepartDate(
+      allOptions.find((o) => o.execution_id === latest.id)?.outbound_legs,
+    ) ?? null;
+  const requestedDate =
+    typeof sp.fecha === "string" && /^\d{4}-\d{2}-\d{2}$/.test(sp.fecha)
+      ? sp.fecha
+      : null;
+  const selectedDate =
+    requestedDate ?? latestDate ?? search.depart_date ?? availableDates[0] ?? null;
+
+  // Only the newest run that returned this date: a re-search never resurfaces
+  // rows the latest run no longer offered.
+  const { rows: allRows, executionId: displayExecId } = selectedDate
+    ? resolveDateView(allOptions, execList, selectedDate)
+    : { rows: [] as OptionRow[], executionId: null as string | null };
+  const displayExec = execList.find((e) => e.id === displayExecId) ?? null;
+  const headerExec = displayExec ?? latest;
+
+  const filters = parseFilters(sp);
+
+  const { data: favorites } = await supabase
+    .from("favorite_deals")
+    .select("dedupe_key")
+    .eq("search_id", id);
+  const favoriteKeys = new Set((favorites ?? []).map((f) => f.dedupe_key));
+
+  // Favorites float to the front while keeping the user's chosen sort.
+  const rows = favoritesFirst(
+    applyFilters(allRows, filters).map((r) => ({
+      ...r,
+      isFavorite: favoriteKeys.has(r.dedupe_key),
+    })),
+  );
+
+  // City names for every airport on this page, resolved once from the static
+  // dataset.
+  const codes = new Set<string>([search.origin, search.destination]);
+  for (const opt of allRows) {
+    for (const leg of [...opt.outbound_legs, ...opt.inbound_legs]) {
+      codes.add(leg.departAirport);
+      codes.add(leg.arriveAirport);
+    }
+  }
+  const cities = cityMapFor(codes);
   const bestPrice = allRows.length > 0 ? Number(allRows[0].price_eur) : null;
   const filtered =
     filters.maxPrice != null ||
@@ -204,17 +263,31 @@ export default async function SearchResultsPage({
     filters.nonStopOnly ||
     filters.airline != null;
   const airlines = airlineOptions(allRows);
-  const sourceTrace = readSourceTrace(execution.raw_result);
+  const sourceTrace = readSourceTrace(headerExec.raw_result);
+  // The rows come from the newest run that returned this date, which may not be
+  // the newest run: a later degraded run is why the dashboard says "Degradada"
+  // while this page still lists prices. Show its reason instead of hiding it.
+  const latestTrace =
+    latest.id !== headerExec.id && latest.status === "degraded"
+      ? readSourceTrace(latest.raw_result)
+      : null;
   const bookingUrl = buildBookingUrl({
     origin: search.origin,
     destination: search.destination,
-    depart_date: search.depart_date,
+    depart_date: selectedDate,
     return_date: search.return_date,
     trip_type: search.trip_type,
     cabin_class: search.cabin_class,
     stops: search.stops,
     adults: search.adults,
   });
+
+  const selectedIsLatest = selectedDate != null && selectedDate === latestDate;
+  const showFailed =
+    !displayExec &&
+    latest.status === "failed" &&
+    (selectedDate == null || selectedIsLatest);
+  const baseHref = selectedDate ? `/searches/${id}?fecha=${selectedDate}` : `/searches/${id}`;
 
   const { data: stats } = await supabase
     .from("price_stats_daily")
@@ -245,15 +318,15 @@ export default async function SearchResultsPage({
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {allRows.length} opciones · búsqueda completada el{" "}
-            {execution.finished_at
-              ? new Date(execution.finished_at).toLocaleDateString("es-ES")
+            {headerExec.finished_at
+              ? new Date(headerExec.finished_at).toLocaleDateString("es-ES")
               : "—"}
             {` · ${search.adults} pasajero${search.adults > 1 ? "s" : ""} · ${
               search.cabin_class === "economy" ? "economy" : search.cabin_class
             }`}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <FreshnessChip checkedAt={execution.finished_at} />
+            <FreshnessChip checkedAt={headerExec.finished_at} />
             {search.alert_threshold_eur != null ? (
               <Badge variant="info">
                 Alerta: avisar por debajo de{" "}
@@ -266,13 +339,21 @@ export default async function SearchResultsPage({
               <SourceTraceNote trace={sourceTrace} />
             </div>
           ) : null}
+          {latestTrace ? (
+            <div className="mt-2">
+              <p className="text-xs font-semibold text-opportunity">
+                La última comprobación se degradó y no hay precios nuevos:
+                mostrando los que sí se observaron.
+              </p>
+              <SourceTraceNote trace={latestTrace} />
+            </div>
+          ) : null}
           {search.date_flex_days > 0 ? (
             <div className="mt-2">
-              <p className="text-xs text-opportunity">
+              <p className="text-xs text-muted-foreground">
                 Esta búsqueda tiene ±{search.date_flex_days} días de
-                flexibilidad, así que solo se consulta Google Flights: SerpAPI e
-                Ignav degradan a propósito para no buscar en silencio solo tus
-                fechas exactas.
+                flexibilidad: SerpAPI e Ignav recorren la ventana (una consulta
+                por día) y Google Flights solo la fecha exacta.
               </p>
             </div>
           ) : null}
@@ -291,7 +372,17 @@ export default async function SearchResultsPage({
         </div>
       </div>
 
-      {failed ? (
+      <SearchCalendar
+        searchId={id}
+        returnDate={search.return_date}
+        selectedDate={selectedDate}
+        availableDates={availableDates}
+        executedAt={displayExec?.finished_at ?? null}
+        hasResults={allRows.length > 0}
+        executionFailed={showFailed}
+      />
+
+      {showFailed ? (
         <Card>
           <CardHeader>
             <CardTitle>No pudimos completar esta búsqueda</CardTitle>
@@ -299,14 +390,14 @@ export default async function SearchResultsPage({
           <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
             <p>
               La última ejecución falló
-              {execution.finished_at
-                ? ` el ${new Date(execution.finished_at).toLocaleDateString("es-ES")}`
+              {latest.finished_at
+                ? ` el ${new Date(latest.finished_at).toLocaleDateString("es-ES")}`
                 : ""}
               , así que no hay precios que mostrar. No hemos inventado datos.
             </p>
-            {execution.error_message && (
+            {latest.error_message && (
               <p className="rounded-lg bg-muted px-3 py-2 font-mono text-xs">
-                {execution.error_message}
+                {latest.error_message}
               </p>
             )}
             <p>
@@ -318,18 +409,7 @@ export default async function SearchResultsPage({
             </p>
           </CardContent>
         </Card>
-      ) : allRows.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No hemos encontrado vuelos para esta búsqueda</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Prueba con fechas más flexibles o un destino diferente.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
+      ) : allRows.length === 0 ? null : (
         <div className="grid gap-4 lg:grid-cols-[1fr_240px] lg:gap-6">
           {/* Filters first in the source: above the cards on mobile, sticky
               beside them on desktop. */}
@@ -340,36 +420,31 @@ export default async function SearchResultsPage({
                   {filtered && (
                     <Link
                       className="text-center text-xs text-muted-foreground underline"
-                      href={`/searches/${id}`}
+                      href={baseHref}
                     >
                       Quitar filtros
                     </Link>
-                  )}
-                  {rows.length !== allRows.length && (
-                    <p className="text-xs text-muted-foreground">
-                      {rows.length} de {allRows.length} opciones
-                    </p>
                   )}
                 </>
               }
             >
               <form className="flex flex-col gap-3">
+                <input type="hidden" name="fecha" value={selectedDate ?? ""} />
                 <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                   Precio máximo ({currency})
                   <input
-                    className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                    className="field-control h-8 rounded-lg border border-border bg-transparent px-2 text-sm"
                     defaultValue={filters.maxPrice ?? ""}
                     min={0}
                     name="precio"
                     placeholder="sin límite"
-                    step="0.01"
                     type="number"
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                   Duración máxima (min)
                   <input
-                    className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                    className="field-control h-8 rounded-lg border border-border bg-transparent px-2 text-sm"
                     defaultValue={filters.maxDuration ?? ""}
                     min={0}
                     name="dur"
@@ -390,7 +465,7 @@ export default async function SearchResultsPage({
                   <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                     Aerolínea
                     <select
-                      className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                      className="field-control h-8 rounded-lg border border-border bg-transparent px-2 text-sm"
                       defaultValue={filters.airline ?? ""}
                       name="aerolinea"
                     >
@@ -406,7 +481,7 @@ export default async function SearchResultsPage({
                 <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                   Ordenar por
                   <select
-                    className="field-control h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
+                    className="field-control h-8 rounded-lg border border-border bg-transparent px-2 text-sm"
                     defaultValue={filters.sort}
                     name="ord"
                   >
@@ -430,7 +505,7 @@ export default async function SearchResultsPage({
                 action={
                   <Link
                     className="text-sm font-semibold text-brand underline"
-                    href={`/searches/${id}`}
+                    href={baseHref}
                   >
                     Quitar filtros
                   </Link>
@@ -451,6 +526,8 @@ export default async function SearchResultsPage({
                     bookingLinks: option.booking_links,
                   }}
                   isBestPrice={Number(option.price_eur) === bestPrice}
+                  cities={cities}
+                  isFavorite={option.isFavorite}
                 />
               ))
             )}

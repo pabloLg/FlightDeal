@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { cheapestIn, rankDeals, topIsProfileCurrency } from "./rank";
+import {
+  cheapestIn,
+  favoritesFirst,
+  rankDeals,
+  topIsProfileCurrency,
+} from "./rank";
 
 const eur = (price: number) => ({ price, currency: "EUR" });
 const usd = (price: number) => ({ price, currency: "USD" });
@@ -41,6 +46,20 @@ describe("topIsProfileCurrency", () => {
 
   it("is true when the leading group is the profile currency", () => {
     expect(topIsProfileCurrency([eur(95), usd(90)], "EUR")).toBe(true);
+  });
+});
+
+describe("favoritesFirst", () => {
+  const d = (id: string, isFavorite?: boolean) => ({ id, isFavorite });
+
+  it("floats favorites to the front keeping the active order", () => {
+    expect(
+      favoritesFirst([d("a"), d("b", true), d("c"), d("d", true)]).map((x) => x.id),
+    ).toEqual(["b", "d", "a", "c"]);
+  });
+
+  it("leaves the order untouched when there are no favorites", () => {
+    expect(favoritesFirst([d("a"), d("b")]).map((x) => x.id)).toEqual(["a", "b"]);
   });
 });
 

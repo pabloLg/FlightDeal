@@ -14,9 +14,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
-import { isoDaysAgo } from "@/src/domain/deals/date-window";
+import { cityMapFor } from "@/src/domain/sources/airports";
+import { isoDaysAgo, outboundDepartDate } from "@/src/domain/deals/date-window";
 import {
   cheapestIn,
+  favoritesFirst,
   rankDeals,
   topIsProfileCurrency,
   type RankableDeal,
@@ -41,6 +43,7 @@ type FlightOptionRow = {
   id: string;
   search_id: string;
   execution_id: string;
+  dedupe_key: string;
   price_eur: number;
   currency: string;
   airlines: string[] | null;
@@ -99,7 +102,8 @@ export default async function DashboardPage() {
   const searchIds = (searches ?? []).map((s) => s.id);
 
   const lastExecution = new Map<string, ExecutionRow>();
-  const resultsExecution = new Map<string, string>();
+  const execRank = new Map<string, number>();
+  const execById = new Map<string, ExecutionRow>();
   const baselineBySearch = new Map<string, number>();
   const trendBySearch = new Map<string, number>();
   if (searchIds.length > 0) {
@@ -117,16 +121,15 @@ export default async function DashboardPage() {
         .gte("stats_date", isoDaysAgo(30)),
     ]);
 
-    for (const exec of (executions ?? []) as ExecutionRow[]) {
+    // Executions arrive newest first, so the array index is a per-search "how
+    // recent" rank. Both maps are read below to keep, per search, the newest
+    // run that actually returned rows.
+    ((executions ?? []) as ExecutionRow[]).forEach((exec, i) => {
+      execRank.set(exec.id, i);
+      execById.set(exec.id, exec);
       if (!lastExecution.has(exec.search_id))
         lastExecution.set(exec.search_id, exec);
-      if (
-        !resultsExecution.has(exec.search_id) &&
-        (exec.status === "completed" || exec.status === "degraded")
-      ) {
-        resultsExecution.set(exec.search_id, exec.id);
-      }
-    }
+    });
 
     const avgAcc = new Map<string, { sum: number; n: number }>();
     const weekAgo = isoDaysAgo(7);
@@ -149,20 +152,73 @@ export default async function DashboardPage() {
   }
 
   const optionsBySearch = new Map<string, FlightOptionRow[]>();
-  if (resultsExecution.size > 0) {
+  const availableDatesBySearch = new Map<string, Set<string>>();
+  const displayExecBySearch = new Map<string, ExecutionRow>();
+  if (searchIds.length > 0) {
+    // Options belong to the search, not to one run: every execution's rows
+    // coexist in flight_options (the dedupe key folds in the departure date).
+    // A degraded run persists nothing, so picking it as "the results run"
+    // blanked prices a previous good run had already found. Keep, per search,
+    // the rows of the newest execution that actually returned some.
     const { data: options } = await supabase
       .from("flight_options")
       .select(
-        "id, search_id, execution_id, price_eur, currency, airlines, total_duration_min, outbound_legs, inbound_legs",
+        "id, search_id, execution_id, dedupe_key, price_eur, currency, airlines, total_duration_min, outbound_legs, inbound_legs",
       )
-      .in("execution_id", [...resultsExecution.values()])
+      .in("search_id", searchIds)
       .order("price_eur", { ascending: true });
-    for (const opt of (options ?? []) as FlightOptionRow[]) {
+    const rows = (options ?? []) as FlightOptionRow[];
+
+    const bestRank = new Map<string, number>();
+    for (const opt of rows) {
+      const rank = execRank.get(opt.execution_id) ?? Number.POSITIVE_INFINITY;
+      const current = bestRank.get(opt.search_id);
+      if (current === undefined || rank < current) {
+        bestRank.set(opt.search_id, rank);
+        const exec = execById.get(opt.execution_id);
+        if (exec) displayExecBySearch.set(opt.search_id, exec);
+      }
+    }
+
+    for (const opt of rows) {
+      const winner = displayExecBySearch.get(opt.search_id);
+      if (!winner || winner.id !== opt.execution_id) continue;
       const list = optionsBySearch.get(opt.search_id);
       if (list) list.push(opt);
       else optionsBySearch.set(opt.search_id, [opt]);
+
+      const outDate = outboundDepartDate(opt.outbound_legs);
+      if (outDate) {
+        const dates = availableDatesBySearch.get(opt.search_id);
+        if (dates) dates.add(outDate);
+        else availableDatesBySearch.set(opt.search_id, new Set([outDate]));
+      }
     }
   }
+
+  const { data: favorites } = await supabase
+    .from("favorite_deals")
+    .select("search_id, dedupe_key");
+  const favoriteKeys = new Set(
+    (favorites ?? []).map((f) => `${f.search_id}:${f.dedupe_key}`),
+  );
+
+  // City names for every airport the page is about to draw, resolved once from
+  // the static dataset and shared by all cards.
+  const codes = new Set<string>();
+  for (const s of searches ?? []) {
+    codes.add(s.origin);
+    codes.add(s.destination);
+  }
+  for (const list of optionsBySearch.values()) {
+    for (const opt of list) {
+      for (const leg of (opt.outbound_legs as FlightLeg[] | null) ?? []) {
+        codes.add(leg.departAirport);
+        codes.add(leg.arriveAirport);
+      }
+    }
+  }
+  const cities = cityMapFor(codes);
 
   // Cheapest option per search with the currency it was quoted in: a search
   // whose sources quote different currencies shows the profile-currency one
@@ -178,8 +234,14 @@ export default async function DashboardPage() {
 
   const deals: DealType[] = (searches ?? [])
     .flatMap((s) => {
-      const executedAt = lastExecution.get(s.id)?.finished_at ?? null;
+      // When the newest run degraded, the prices on screen are the last good
+      // run's, so the freshness chip must date them, not the failed attempt.
+      const executedAt =
+        (displayExecBySearch.get(s.id) ?? lastExecution.get(s.id))?.finished_at ??
+        null;
       const baseline = baselineBySearch.get(s.id) ?? null;
+      const availableDates = [...(availableDatesBySearch.get(s.id) ?? [])].sort();
+      const executionStatus = lastExecution.get(s.id)?.status ?? null;
       return (optionsBySearch.get(s.id) ?? []).slice(0, 1).map(
         (opt) =>
           ({
@@ -200,13 +262,19 @@ export default async function DashboardPage() {
             totalDurationMin: opt.total_duration_min,
             baseline,
             executedAt,
+            availableDates,
+            executionStatus,
+            cities,
+            isFavorite: favoriteKeys.has(`${s.id}:${opt.dedupe_key}`),
           }) satisfies DealType,
       );
     });
 
   // Amounts in different currencies are never compared: the profile-currency
   // group leads and only that group earns the global "best opportunity" badge.
-  const rankedDeals = rankDeals(deals, profileCurrency);
+  // Favorites float to the front afterwards, keeping that ranking inside each
+  // group.
+  const rankedDeals = favoritesFirst(rankDeals(deals, profileCurrency));
   const featuredIsHonest = topIsProfileCurrency(rankedDeals, profileCurrency);
 
   const trendRows = (searches ?? [])

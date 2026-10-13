@@ -1,4 +1,5 @@
 import type { FlightSource } from "./flight-source";
+import { fetchFlexWindow } from "./flex-window";
 import { httpJsonFetcher, parseJson, type JsonFetcher } from "./http-json";
 import { optionKey } from "./option-key";
 import type {
@@ -209,6 +210,7 @@ export type SerpReturnLegsStatus =
   | "no_token"
   | "no_return_options"
   | "unparsable"
+  | "flex_window"
   | `second_request_failed:${string}`;
 
 export class SerpApiFlightSource implements FlightSource {
@@ -353,6 +355,75 @@ export class SerpApiFlightSource implements FlightSource {
     };
   }
 
+  // First request of any search, for one concrete date. Kept separate from the
+  // enrichment so the flex window can call it once per day without dragging the
+  // return-legs and booking requests into every iteration.
+  private async fetchBase(params: FlightSearchParams): Promise<
+    | {
+        ok: true;
+        options: FlightOption[];
+        tokens: SerpTokens[];
+        currency: string;
+      }
+    | { ok: false; message: string }
+  > {
+    let response;
+    try {
+      response = await this.fetcher({
+        url: `https://serpapi.com/search?${this.buildQuery(params).toString()}`,
+        method: "GET",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, message: `fetch_failed:${message}` };
+    }
+
+    // 429 = monthly/hourly quota spent, 401/403 = bad key. Both are degradation
+    // causes, never an empty result: the chain moves on to the next source.
+    if (response.status < 200 || response.status >= 300) {
+      return { ok: false, message: `http_${response.status}` };
+    }
+
+    const parsed = parseSerpResponse(parseJson(response.body), params);
+    if (!parsed) return { ok: false, message: "structure_mismatch:unparsable_response" };
+
+    // Results present but none survived parsing means the shape moved: degrade
+    // instead of reporting a bogus "no flights".
+    if (parsed.hadResults && parsed.options.length === 0) {
+      return { ok: false, message: "structure_mismatch:no_options_parsed" };
+    }
+
+    return {
+      ok: true,
+      options: parsed.options,
+      tokens: parsed.tokens,
+      currency: parsed.currency,
+    };
+  }
+
+  // ±flex days: one base request per date, concatenated. SerpAPI has no
+  // flexible-date parameter, so the window is explored by asking each day.
+  // Enrichment is skipped on purpose (N days × return-legs/booking would
+  // multiply the requests; per-option returns do not matter when picking a day).
+  private async searchFlex(
+    params: FlightSearchParams,
+  ): Promise<FlightSourceResult & { returnLegs?: SerpReturnLegsStatus }> {
+    const outcome = await fetchFlexWindow(params, async (dayParams) => {
+      const base = await this.fetchBase(dayParams);
+      return base.ok
+        ? { ok: true, options: base.options, currency: base.currency }
+        : { ok: false, message: base.message };
+    });
+    return {
+      options: outcome.options,
+      currency: outcome.currency,
+      structureVersion: SERPAPI_STRUCTURE_VERSION,
+      degraded: outcome.degraded,
+      ...(outcome.message ? { message: outcome.message } : {}),
+      returnLegs: "flex_window",
+    };
+  }
+
   async search(
     params: FlightSearchParams,
   ): Promise<FlightSourceResult & { returnLegs?: SerpReturnLegsStatus }> {
@@ -364,40 +435,15 @@ export class SerpApiFlightSource implements FlightSource {
       message,
     });
 
-    if ((params.flexDays ?? 0) > 0) return degraded("flex_unsupported");
+    if ((params.flexDays ?? 0) > 0) return this.searchFlex(params);
 
-    const query = this.buildQuery(params);
+    const base = await this.fetchBase(params);
+    if (!base.ok) return degraded(base.message);
 
-    let response;
-    try {
-      response = await this.fetcher({
-        url: `https://serpapi.com/search?${query.toString()}`,
-        method: "GET",
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return degraded(`fetch_failed:${message}`);
-    }
-
-    // 429 = monthly/hourly quota spent, 401/403 = bad key. Both are degradation
-    // causes, never an empty result: the chain moves on to the next source.
-    if (response.status < 200 || response.status >= 300) {
-      return degraded(`http_${response.status}`);
-    }
-
-    const parsed = parseSerpResponse(parseJson(response.body), params);
-    if (!parsed) return degraded("structure_mismatch:unparsable_response");
-
-    // Results present but none survived parsing means the shape moved: degrade
-    // instead of reporting a bogus "no flights".
-    if (parsed.hadResults && parsed.options.length === 0) {
-      return degraded("structure_mismatch:no_options_parsed");
-    }
-
-    if (parsed.options.length === 0) {
+    if (base.options.length === 0) {
       return {
         options: [],
-        currency: parsed.currency,
+        currency: base.currency,
         structureVersion: SERPAPI_STRUCTURE_VERSION,
         degraded: false,
         message: "no_flights",
@@ -410,20 +456,20 @@ export class SerpApiFlightSource implements FlightSource {
     // (ponytail: same rule as the Google return-legs enrichment).
     if (params.tripType !== "round_trip") {
       let cheapestIdx = 0;
-      for (let i = 1; i < parsed.options.length; i++) {
-        if (parsed.options[i].price < parsed.options[cheapestIdx].price) cheapestIdx = i;
+      for (let i = 1; i < base.options.length; i++) {
+        if (base.options[i].price < base.options[cheapestIdx].price) cheapestIdx = i;
       }
       // One-way responses carry booking_token directly (no departure_token).
       const options = await this.attachBookingLinks(
         params,
-        parsed.currency,
-        parsed.options,
+        base.currency,
+        base.options,
         cheapestIdx,
-        parsed.tokens[cheapestIdx]?.booking,
+        base.tokens[cheapestIdx]?.booking,
       );
       return {
         options,
-        currency: parsed.currency,
+        currency: base.currency,
         structureVersion: SERPAPI_STRUCTURE_VERSION,
         degraded: false,
         returnLegs: "one_way",
@@ -431,8 +477,8 @@ export class SerpApiFlightSource implements FlightSource {
     }
     if (!params.returnDate) {
       return {
-        options: parsed.options,
-        currency: parsed.currency,
+        options: base.options,
+        currency: base.currency,
         structureVersion: SERPAPI_STRUCTURE_VERSION,
         degraded: false,
         returnLegs: "no_return_date",
@@ -444,17 +490,17 @@ export class SerpApiFlightSource implements FlightSource {
       returnLegs,
       cheapestIdx,
       bookingToken,
-    } = await this.attachReturnLegs(params, parsed.options, parsed.tokens);
+    } = await this.attachReturnLegs(params, base.options, base.tokens);
     const options = await this.attachBookingLinks(
       params,
-      parsed.currency,
+      base.currency,
       withReturn,
       cheapestIdx,
       bookingToken,
     );
     return {
       options,
-      currency: parsed.currency,
+      currency: base.currency,
       structureVersion: SERPAPI_STRUCTURE_VERSION,
       degraded: false,
       returnLegs,
