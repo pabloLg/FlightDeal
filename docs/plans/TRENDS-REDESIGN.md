@@ -1,8 +1,9 @@
 # FlightDeal — Rediseño de Tendencias
 
-> Estado: implementado 2026-10-13. Alcance acordado con el usuario: pagina
-> independiente `/trends` + resumen compacto en el Dashboard. **Sin tocar**
-> esquema, migraciones, RLS, scrapers, cadena de fuentes, scheduler, alertas ni
+> Estado: implementado y **desplegado en produccion el 2026-10-13** (merge
+> `dev` → `master`). Alcance acordado con el usuario: pagina independiente
+> `/trends` + resumen compacto en el Dashboard. **Sin tocar** esquema,
+> migraciones, RLS, scrapers, cadena de fuentes, scheduler, alertas ni
 > dependencias.
 
 ## Datos
@@ -51,6 +52,16 @@ en la tarjeta. Enlace «Ver todas las tendencias» a `/trends`.
   dependencia); con menos de dos dias muestra «Historico insuficiente para
   mostrar la evolucion». Panel lateral sticky en escritorio, plegable en movil.
 - `app/app/dashboard/page.tsx` y `app/components/layout/header-nav.tsx`.
+
+## Verificacion
+
+- `npm run typecheck`, `npm run lint` y `npm run build`: OK. `npm test`: 251 tests
+  en 31 ficheros (14 nuevos de Tendencias).
+- End-to-end contra la BD real con el usuario demo: `/trends` sin sesion redirige
+  a `/login`; con sesion, cambiar de periodo recalcula tarjetas e indicadores
+  (7 d: 10 rutas / 4 bajadas; 30 d: 11 rutas; «Todo»: 12 rutas), las rutas con un
+  solo dia muestran «Historico insuficiente», y el Dashboard muestra el resumen
+  de 7 d con el enlace a `/trends`.
 
 ## Limitaciones
 
