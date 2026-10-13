@@ -129,16 +129,30 @@ function RouteCard({
   route: RouteTrend;
   cities: Record<string, string>;
 }) {
-  const { search, days, minPeriod, lastMin, change, lastCheckAt } = route;
-  const cityFrom = cities[search.origin] ?? search.origin;
-  const cityTo = cities[search.destination] ?? search.destination;
-  const trip = search.trip_type === "one_way" ? "solo ida" : "ida y vuelta";
-  const dates = search.depart_date
-    ? `${fmtDay(search.depart_date)}${
-        search.return_date ? ` – ${fmtDay(search.return_date)}` : ""
-      }`
-    : "sin fecha fija";
-  const flex = search.date_flex_days > 0 ? ` · ±${search.date_flex_days} días` : "";
+  const {
+    origin,
+    destination,
+    tripType,
+    searches,
+    departDates,
+    latestSearchId,
+    days,
+    minPeriod,
+    lastMin,
+    change,
+    lastCheckAt,
+  } = route;
+  const cityFrom = cities[origin] ?? origin;
+  const cityTo = cities[destination] ?? destination;
+  const trip = tripType === "one_way" ? "solo ida" : "ida y vuelta";
+  // Departure dates are not unique once searches are fused: show the range.
+  const dateRange =
+    departDates.length === 0
+      ? "sin fecha fija"
+      : departDates.length === 1
+        ? fmtDay(departDates[0])
+        : `${fmtDay(departDates[0])} – ${fmtDay(departDates[departDates.length - 1])}`;
+  const searchCount = searches.length;
   const lastTone =
     change !== null && change < 0
       ? "text-savings"
@@ -151,14 +165,13 @@ function RouteCard({
       <div className="flex items-start justify-between gap-3 px-4 pt-4">
         <div className="min-w-0">
           <div className="text-lg font-extrabold tracking-tight text-brand-dark">
-            {search.origin} → {search.destination}
+            {origin} → {destination}
           </div>
           <div className="truncate text-xs text-muted-foreground">
             {cityFrom} → {cityTo}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            {dates} · {trip}
-            {flex}
+            {searchCount} búsqueda{searchCount > 1 ? "s" : ""} · {dateRange} · {trip}
           </div>
         </div>
         <ChangeBadge change={change} />
@@ -196,7 +209,7 @@ function RouteCard({
             : "Sin comprobaciones registradas"}
         </span>
         <Link
-          href={`/searches/${search.id}`}
+          href={`/searches/${latestSearchId}`}
           className="font-semibold text-brand hover:underline"
         >
           Ver búsqueda →
@@ -332,7 +345,8 @@ export function TrendsView({
                 <div>
                   <h2 className="text-lg font-bold text-brand-dark">Evolución por ruta</h2>
                   <p className="text-xs text-muted-foreground">
-                    Mínimo diario observado, último valor y variación del período.
+                    Mínimo diario observado por ruta (fusionando sus búsquedas),
+                    último valor y variación del período.
                   </p>
                 </div>
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -366,7 +380,7 @@ export function TrendsView({
               ) : (
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   {routes.map((route) => (
-                    <RouteCard key={route.search.id} route={route} cities={cities} />
+                    <RouteCard key={route.key} route={route} cities={cities} />
                   ))}
                 </div>
               )}
@@ -434,10 +448,12 @@ export function TrendsView({
                 Cómo leer las tendencias
               </h2>
               <p className="mt-2">
-                La variación solo aparece cuando la misma búsqueda tiene al menos
-                dos días con observaciones comparables. Una bajada describe el
-                mínimo diario que se registró: no garantiza que ese precio siga
-                disponible ni que corresponda al mismo vuelo.
+                Cada ruta agrupa todas tus búsquedas del mismo par de ciudades y
+                tipo de viaje: la serie es el mínimo diario entre ellas. La
+                variación solo aparece cuando hay al menos dos días con
+                observaciones comparables. Una bajada describe el mínimo diario
+                que se registró: no garantiza que ese precio siga disponible ni
+                que corresponda al mismo vuelo.
               </p>
               <p className="mt-2">
                 No se inventan valores entre observaciones y todo el histórico está

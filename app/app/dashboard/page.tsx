@@ -408,12 +408,12 @@ export default async function DashboardPage() {
                   <ul className="flex flex-col gap-2">
                     {dashboardTrends.map((route) => (
                       <li
-                        key={route.search.id}
+                        key={route.key}
                         className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
                       >
                         <span className="flex min-w-0 items-center gap-2">
                           <span className="font-medium text-brand-dark">
-                            {route.search.origin} → {route.search.destination}
+                            {route.origin} → {route.destination}
                           </span>
                           {route.change !== null && route.change < 0 && (
                             <Badge variant="ok">
