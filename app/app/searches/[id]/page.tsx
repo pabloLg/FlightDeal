@@ -264,6 +264,13 @@ export default async function SearchResultsPage({
     filters.airline != null;
   const airlines = airlineOptions(allRows);
   const sourceTrace = readSourceTrace(headerExec.raw_result);
+  // The rows come from the newest run that returned this date, which may not be
+  // the newest run: a later degraded run is why the dashboard says "Degradada"
+  // while this page still lists prices. Show its reason instead of hiding it.
+  const latestTrace =
+    latest.id !== headerExec.id && latest.status === "degraded"
+      ? readSourceTrace(latest.raw_result)
+      : null;
   const bookingUrl = buildBookingUrl({
     origin: search.origin,
     destination: search.destination,
@@ -332,13 +339,21 @@ export default async function SearchResultsPage({
               <SourceTraceNote trace={sourceTrace} />
             </div>
           ) : null}
+          {latestTrace ? (
+            <div className="mt-2">
+              <p className="text-xs font-semibold text-opportunity">
+                La última comprobación se degradó y no hay precios nuevos:
+                mostrando los que sí se observaron.
+              </p>
+              <SourceTraceNote trace={latestTrace} />
+            </div>
+          ) : null}
           {search.date_flex_days > 0 ? (
             <div className="mt-2">
-              <p className="text-xs text-opportunity">
+              <p className="text-xs text-muted-foreground">
                 Esta búsqueda tiene ±{search.date_flex_days} días de
-                flexibilidad, así que solo se consulta Google Flights: SerpAPI e
-                Ignav degradan a propósito para no buscar en silencio solo tus
-                fechas exactas.
+                flexibilidad: SerpAPI e Ignav recorren la ventana (una consulta
+                por día) y Google Flights solo la fecha exacta.
               </p>
             </div>
           ) : null}

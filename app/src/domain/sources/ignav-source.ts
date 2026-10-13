@@ -1,4 +1,5 @@
 import type { FlightSource } from "./flight-source";
+import { fetchFlexWindow } from "./flex-window";
 import { httpJsonFetcher, parseJson, type JsonFetcher } from "./http-json";
 import { optionKey } from "./option-key";
 import type {
@@ -235,17 +236,17 @@ export class IgnavFlightSource implements FlightSource {
     });
   }
 
-  async search(params: FlightSearchParams): Promise<FlightSourceResult> {
-    const degraded = (message: string): FlightSourceResult => ({
-      options: [],
-      currency: params.currency,
-      structureVersion: IGNAV_STRUCTURE_VERSION,
-      degraded: true,
-      message,
-    });
-
-    if ((params.flexDays ?? 0) > 0) return degraded("flex_unsupported");
-
+  // One fare search for a concrete date. Shared by the exact-date path and the
+  // flex window (booking links are single-pick extras and stay out of the loop).
+  private async fetchBase(params: FlightSearchParams): Promise<
+    | {
+        ok: true;
+        options: FlightOption[];
+        ignavIds: (string | undefined)[];
+        currency: string;
+      }
+    | { ok: false; message: string }
+  > {
     const isRoundTrip = params.tripType === "round_trip" && !!params.returnDate;
     const body: Record<string, unknown> = {
       origin: params.origin,
@@ -270,27 +271,67 @@ export class IgnavFlightSource implements FlightSource {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return degraded(`fetch_failed:${message}`);
+      return { ok: false, message: `fetch_failed:${message}` };
     }
 
     // 401 invalid key, 402 billing required, 424 upstream failure, 429 spend cap.
     // None of them mean "no flights"; the chain must move to the next source.
     if (response.status < 200 || response.status >= 300) {
-      return degraded(`http_${response.status}`);
+      return { ok: false, message: `http_${response.status}` };
     }
 
     const parsed = parseIgnavResponse(parseJson(response.body), params.currency);
-    if (!parsed) return degraded("structure_mismatch:unparsable_response");
+    if (!parsed) return { ok: false, message: "structure_mismatch:unparsable_response" };
 
     if (parsed.hadResults && parsed.options.length === 0) {
-      return degraded("structure_mismatch:no_options_parsed");
+      return { ok: false, message: "structure_mismatch:no_options_parsed" };
     }
 
-    if (parsed.options.length === 0) {
+    return {
+      ok: true,
+      options: parsed.options,
+      ignavIds: parsed.ignavIds,
+      // Ignav has no currency parameter (only a market-local one); the price
+      // currency is whatever the response reports.
+      currency: parsed.options[0]?.currency ?? params.currency,
+    };
+  }
+
+  // ±flex days: one fare search per date, concatenated. Ignav has no
+  // flexible-date parameter, so the window is explored by asking each day.
+  private async searchFlex(params: FlightSearchParams): Promise<FlightSourceResult> {
+    const outcome = await fetchFlexWindow(params, async (dayParams) => {
+      const base = await this.fetchBase(dayParams);
+      return base.ok
+        ? { ok: true, options: base.options, currency: base.currency }
+        : { ok: false, message: base.message };
+    });
+    return {
+      options: outcome.options,
+      currency: outcome.currency,
+      structureVersion: IGNAV_STRUCTURE_VERSION,
+      degraded: outcome.degraded,
+      ...(outcome.message ? { message: outcome.message } : {}),
+    };
+  }
+
+  async search(params: FlightSearchParams): Promise<FlightSourceResult> {
+    const degraded = (message: string): FlightSourceResult => ({
+      options: [],
+      currency: params.currency,
+      structureVersion: IGNAV_STRUCTURE_VERSION,
+      degraded: true,
+      message,
+    });
+
+    if ((params.flexDays ?? 0) > 0) return this.searchFlex(params);
+
+    const base = await this.fetchBase(params);
+    if (!base.ok) return degraded(base.message);
+
+    if (base.options.length === 0) {
       return {
         options: [],
-        // Ignav has no currency parameter (only a market-local one); the price
-        // currency is whatever the response reports.
         currency: params.currency,
         structureVersion: IGNAV_STRUCTURE_VERSION,
         degraded: false,
@@ -298,12 +339,10 @@ export class IgnavFlightSource implements FlightSource {
       };
     }
 
-    const options = await this.attachBookingLinks(parsed.options, parsed.ignavIds);
+    const options = await this.attachBookingLinks(base.options, base.ignavIds);
     return {
       options,
-      // Ignav has no currency parameter (only a market-local one); the price
-      // currency is whatever the response reports.
-      currency: parsed.options[0]?.currency ?? params.currency,
+      currency: base.currency,
       structureVersion: IGNAV_STRUCTURE_VERSION,
       degraded: false,
     };
