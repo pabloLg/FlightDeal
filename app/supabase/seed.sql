@@ -112,8 +112,20 @@ values
     '00000000-0000-0000-0000-000000000002',
     '00000000-0000-0000-0000-000000000003',
     'mad-bcn-ib3210',
-    '[{"origin":"MAD","destination":"BCN","departure":null,"arrival":null,"airline_codes":["IB"]}]',
-    '[{"origin":"BCN","destination":"MAD","departure":null,"arrival":null,"airline_codes":["IB"]}]',
+    jsonb_build_array(jsonb_build_object(
+      'airline', 'IB', 'flightNumber', 'IB3210',
+      'departAirport', 'MAD', 'arriveAirport', 'BCN',
+      'departAt', to_char(current_date + interval '30 days' + time '08:30', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'arriveAt', to_char(current_date + interval '30 days' + time '10:05', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'durationMin', 95
+    )),
+    jsonb_build_array(jsonb_build_object(
+      'airline', 'IB', 'flightNumber', 'IB3211',
+      'departAirport', 'BCN', 'arriveAirport', 'MAD',
+      'departAt', to_char(current_date + interval '37 days' + time '18:20', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'arriveAt', to_char(current_date + interval '37 days' + time '19:55', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'durationMin', 95
+    )),
     95.00,
     'EUR',
     '["Iberia"]',
@@ -124,12 +136,24 @@ values
     '00000000-0000-0000-0000-000000000002',
     '00000000-0000-0000-0000-000000000003',
     'mad-bcn-vy-4231',
-    '[{"origin":"MAD","destination":"BCN","departure":null,"arrival":null,"airline_codes":["VY"]}]',
-    '[{"origin":"BCN","destination":"MAD","departure":null,"arrival":null,"airline_codes":["VY"]}]',
+    jsonb_build_array(jsonb_build_object(
+      'airline', 'VY', 'flightNumber', 'VY4231',
+      'departAirport', 'MAD', 'arriveAirport', 'BCN',
+      'departAt', to_char(current_date + interval '30 days' + time '11:10', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'arriveAt', to_char(current_date + interval '30 days' + time '12:45', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'durationMin', 95
+    )),
+    jsonb_build_array(jsonb_build_object(
+      'airline', 'VY', 'flightNumber', 'VY4232',
+      'departAirport', 'BCN', 'arriveAirport', 'MAD',
+      'departAt', to_char(current_date + interval '37 days' + time '20:10', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'arriveAt', to_char(current_date + interval '37 days' + time '21:45', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+      'durationMin', 95
+    )),
     60.00,
     'EUR',
     '["Vueling"]',
-    75
+    90
   )
 on conflict (search_id, dedupe_key) do nothing;
 

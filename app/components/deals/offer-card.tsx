@@ -305,11 +305,11 @@ export function OfferCard({ data }: { data: OfferCardData }) {
     >
       {hero}
 
-      <div className="px-4 pb-5 pt-4 sm:px-6">
+      <div className="@container px-4 pb-5 pt-4 sm:px-6">
         {calendarBlock}
 
-        <section className="mt-4 grid overflow-hidden rounded-2xl border border-border md:grid-cols-[1.1fr_1.4fr_1fr]">
-          <div className="border-b border-border p-5 md:border-b-0 md:border-r">
+        <section className="mt-4 grid overflow-hidden rounded-2xl border border-border @2xl:grid-cols-[1.1fr_1.4fr_1fr]">
+          <div className="border-b border-border p-5 @2xl:border-b-0 @2xl:border-r">
             <div className="flex items-center gap-2.5">
               <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-dark text-[11px] font-black text-white">
                 {(airline ?? "—").slice(0, 1).toUpperCase()}
@@ -338,7 +338,7 @@ export function OfferCard({ data }: { data: OfferCardData }) {
             ) : null}
           </div>
 
-          <div className="flex flex-col justify-center gap-4 border-b border-border p-5 md:border-b-0">
+          <div className="flex flex-col justify-center gap-4 border-b border-border p-5 @2xl:border-b-0">
             <Direction label="Ida" legs={data.outboundLegs} cities={cities} />
             {data.inboundLegs.length > 0 ? (
               <Direction
@@ -349,7 +349,7 @@ export function OfferCard({ data }: { data: OfferCardData }) {
             ) : null}
           </div>
 
-          <aside className="flex flex-col justify-center gap-5 bg-sky/40 p-5 md:border-l md:border-border">
+          <aside className="flex flex-col justify-center gap-5 bg-sky/40 p-5 @2xl:border-l @2xl:border-border">
             <div className="flex items-start gap-2.5 text-xs leading-snug text-muted-foreground">
               <ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden />
               <div>
