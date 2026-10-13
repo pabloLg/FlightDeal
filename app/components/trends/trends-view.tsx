@@ -36,12 +36,15 @@ const fmtDay = (iso: string) =>
     timeZone: "UTC",
   });
 
+// Pin the zone: the server renders in UTC and the browser in the user's local
+// time, so an unpinned time here hydrates to a different text (React #418).
 const fmtCheck = (iso: string) =>
   new Date(iso).toLocaleString("es-ES", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Europe/Madrid",
   });
 
 function Stat({ label, value, foot }: { label: string; value: string; foot: string }) {
