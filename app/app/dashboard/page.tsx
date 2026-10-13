@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { RecentAlertsCard } from "@/components/alerts/recent-alerts";
@@ -6,6 +7,7 @@ import { type Deal as DealType } from "@/components/deals/deal-card";
 import { FeaturedDeals } from "@/components/deals/featured-deals";
 import { SearchHero } from "@/components/search/search-hero";
 import { SearchesView } from "@/components/search/searches-view";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -23,6 +25,12 @@ import {
   topIsProfileCurrency,
   type RankableDeal,
 } from "@/src/domain/deals/rank";
+import {
+  buildTrends,
+  pickDashboardRoutes,
+  type SearchLike,
+  type StatLike,
+} from "@/src/domain/trends/summary";
 import type { FlightLeg } from "@/src/domain/sources/types";
 
 export const dynamic = "force-dynamic";
@@ -105,7 +113,7 @@ export default async function DashboardPage() {
   const execRank = new Map<string, number>();
   const execById = new Map<string, ExecutionRow>();
   const baselineBySearch = new Map<string, number>();
-  const trendBySearch = new Map<string, number>();
+  let statRows: StatRow[] = [];
   if (searchIds.length > 0) {
     // Executions and stats share no dependency, so they run together.
     const [{ data: executions }, { data: stats }] = await Promise.all([
@@ -132,18 +140,13 @@ export default async function DashboardPage() {
     });
 
     const avgAcc = new Map<string, { sum: number; n: number }>();
-    const weekAgo = isoDaysAgo(7);
-    for (const s of (stats ?? []) as StatRow[]) {
+    statRows = (stats ?? []) as StatRow[];
+    for (const s of statRows) {
       if (s.avg_price_eur != null) {
         const acc = avgAcc.get(s.search_id) ?? { sum: 0, n: 0 };
         acc.sum += Number(s.avg_price_eur);
         acc.n += 1;
         avgAcc.set(s.search_id, acc);
-      }
-      if (s.min_price_eur != null && s.stats_date >= weekAgo) {
-        const prev = trendBySearch.get(s.search_id);
-        if (prev === undefined || Number(s.min_price_eur) < prev)
-          trendBySearch.set(s.search_id, Number(s.min_price_eur));
       }
     }
     for (const [id, acc] of avgAcc) {
@@ -277,10 +280,43 @@ export default async function DashboardPage() {
   const rankedDeals = favoritesFirst(rankDeals(deals, profileCurrency));
   const featuredIsHonest = topIsProfileCurrency(rankedDeals, profileCurrency);
 
-  const trendRows = (searches ?? [])
-    .filter((s) => trendBySearch.has(s.id))
-    .map((s) => ({ search: s, min: trendBySearch.get(s.id) as number }))
-    .sort((a, b) => a.min - b.min);
+  // Trends as a compact teaser: the /trends page owns the full picture. This
+  // only decides which few routes fit here, and it never scores "best
+  // opportunity": recent observations first, drops among them, then the rest.
+  const today = isoDaysAgo(0);
+  const dashboardTrends = pickDashboardRoutes(
+    buildTrends(
+      (searches ?? []).map(
+        (s) =>
+          ({
+            id: s.id,
+            origin: s.origin,
+            destination: s.destination,
+            depart_date: s.depart_date,
+            return_date: s.return_date,
+            trip_type: s.trip_type,
+            date_flex_days: s.date_flex_days,
+          }) satisfies SearchLike,
+      ),
+      statRows.map(
+        (s) =>
+          ({
+            search_id: s.search_id,
+            stats_date: s.stats_date,
+            min_price_eur: s.min_price_eur,
+          }) satisfies StatLike,
+      ),
+      Object.fromEntries(
+        (searches ?? []).map((s) => [
+          s.id,
+          lastExecution.get(s.id)?.finished_at ?? null,
+        ]),
+      ),
+      { period: "7", today },
+    ),
+    today,
+    3,
+  );
 
   // Recent alerts, scoped to this profile by RLS. The join to searches exists
   // only to label each dispatch with its route; there is no second source of
@@ -352,40 +388,53 @@ export default async function DashboardPage() {
         <section id="trends" className="scroll-mt-24">
           <Card className="h-full">
             <CardHeader>
-              <CardTitle>Tendencias (últimos 7 días)</CardTitle>
+              <CardTitle>Tendencias</CardTitle>
               <CardDescription>
-                Mejores precios observados por ruta entre tus búsquedas.
+                Mínimos observados por ruta en los últimos 7 días.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              {trendRows.length === 0 ? (
+            <CardContent className="flex flex-col gap-3">
+              {dashboardTrends.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Todavía no hay datos. Ejecuta una búsqueda para ver tendencias.
                 </p>
               ) : (
                 <>
                   {profileCurrency !== "EUR" && (
-                    <p className="mb-2 text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Histórico disponible en EUR.
                     </p>
                   )}
-                  <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                    {trendRows.map(({ search, min }) => (
+                  <ul className="flex flex-col gap-2">
+                    {dashboardTrends.map((route) => (
                       <li
-                        key={search.id}
-                        className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                        key={route.search.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
                       >
-                        <span className="font-medium text-brand-dark">
-                          {search.origin} → {search.destination}
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="font-medium text-brand-dark">
+                            {route.search.origin} → {route.search.destination}
+                          </span>
+                          {route.change !== null && route.change < 0 && (
+                            <Badge variant="ok">
+                              ↓ {Math.abs(route.change).toFixed(0)}%
+                            </Badge>
+                          )}
                         </span>
-                        <span className="text-muted-foreground">
-                          desde {min.toFixed(2)} EUR
+                        <span className="shrink-0 text-muted-foreground">
+                          desde {route.minPeriod.toFixed(2)} EUR
                         </span>
                       </li>
                     ))}
                   </ul>
                 </>
               )}
+              <Link
+                href="/trends"
+                className="text-sm font-semibold text-brand hover:underline"
+              >
+                Ver todas las tendencias →
+              </Link>
             </CardContent>
           </Card>
         </section>
