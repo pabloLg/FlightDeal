@@ -186,7 +186,119 @@
   @apply border-ring ring-3 ring-ring/50 outline-none;
 }
 
-/* Decorative hero (avion + nubes). Origen: samples/flightdeal_design_prototype.html */
+/* ============================================================
+   Cielo animado.
+   Origen visual: samples/flightdeal-tu-radar-de-viajes.html
+   Un solo marcado (SkyBackground) sobre dos lienzos: .sky (fondo de
+   toda la app) y .search-loader (mientras corre una búsqueda).
+   Todo CSS, sin dependencias. La profundidad la dan el tamaño, la
+   opacidad y la velocidad de cada capa: lejos = pequeña, pálida y
+   lenta; cerca = grande, opaca y rápida.
+   ============================================================ */
+@keyframes skyDrift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(100vw + 320px));
+  }
+}
+@keyframes planeFloat {
+  0%,
+  100% {
+    transform: rotate(-10deg) translateY(0);
+  }
+  50% {
+    transform: rotate(-8deg) translateY(-14px);
+  }
+}
+
+.sky-layers {
+  position: absolute;
+  inset: 0;
+}
+
+/* El envoltorio coloca y arrastra; la forma solo se dimensiona. Separarlos
+   evita que el tamaño se pelee con la animación de deriva. */
+.sky-cloud {
+  position: absolute;
+  left: -240px;
+  animation: skyDrift var(--dur, 60s) linear infinite;
+  animation-delay: var(--delay, 0s);
+}
+/* Nube: barra redondeada con dos lomos (pseudo-elementos). */
+.sky-cloud::before,
+.sky-cloud::after {
+  content: "";
+  position: absolute;
+  background: inherit;
+  border-radius: 50%;
+}
+.sky-cloud::before {
+  width: calc(var(--s, 1) * 120px);
+  height: calc(var(--s, 1) * 120px);
+  left: calc(var(--s, 1) * 38px);
+  bottom: calc(var(--s, 1) * 10px);
+}
+.sky-cloud::after {
+  width: calc(var(--s, 1) * 95px);
+  height: calc(var(--s, 1) * 95px);
+  left: calc(var(--s, 1) * 135px);
+  bottom: calc(var(--s, 1) * 8px);
+}
+.sky-cloud {
+  width: calc(var(--s, 1) * 260px);
+  height: calc(var(--s, 1) * 60px);
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  box-shadow: 0 20px 45px rgba(71, 137, 175, 0.08);
+  opacity: var(--op, 1);
+}
+
+/* Avión de sempre. */
+.sky-plane {
+  position: absolute;
+  font-size: 76px;
+  line-height: 1;
+  transform: rotate(-10deg);
+  filter: drop-shadow(0 12px 10px rgba(23, 75, 112, 0.12));
+  animation: planeFloat 5s ease-in-out infinite;
+}
+.sky-plane--far {
+  font-size: 44px;
+  opacity: 0.5;
+}
+
+/* ---- tres capas de profundidad ---- */
+.sky-cloud--far {
+  --s: 0.55;
+  --op: 0.5;
+  --dur: 84s;
+}
+.sky-cloud--mid {
+  --s: 0.8;
+  --op: 0.75;
+  --dur: 60s;
+}
+.sky-cloud--near {
+  --s: 1.25;
+  --op: 0.95;
+  --dur: 42s;
+}
+
+/* Altura y desfase de cada nube dentro del lienzo (desfases negativos para
+   que no entren todas a la vez). */
+.sky-cloud--a { top: 14%; }
+.sky-cloud--b { top: 28%; --delay: -18s; }
+.sky-cloud--c { top: 40%; --delay: -30s; }
+.sky-cloud--d { top: 54%; --delay: -6s; }
+.sky-cloud--e { top: 66%; --delay: -42s; }
+.sky-cloud--f { top: 78%; --delay: -24s; }
+.sky-cloud--g { top: 86%; --delay: -36s; }
+.sky-cloud--h { top: 20%; --delay: -50s; }
+.sky-cloud--i { top: 72%; --delay: -12s; }
+.sky-cloud--j { top: 34%; --delay: -46s; }
+
 .hero {
   position: relative;
   overflow: hidden;
@@ -197,74 +309,51 @@
   z-index: 2;
   max-width: 760px;
 }
-.plane {
+/* Fondo a pantalla completa detrás de toda la app. */
+.sky {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(118deg, #eaf8ff 0%, #bde9ff 48%, #8dd6ff 100%);
+}
+
+/* Loader a pantalla completa: mismo cielo, aviso encima. */
+.search-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(118deg, #eaf8ff 0%, #bde9ff 48%, #8dd6ff 100%);
+}
+.search-loader-text {
   position: absolute;
-  right: 7%;
-  top: 15px;
-  font-size: 80px;
-  line-height: 1;
-  transform: rotate(-10deg);
-  filter: drop-shadow(0 12px 10px rgba(23, 75, 112, 0.12));
+  top: 50%;
+  left: 50%;
+  width: min(90vw, 460px);
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: #103e78;
 }
-.cloud {
-  position: absolute;
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 999px;
-  box-shadow: 0 20px 45px rgba(71, 137, 175, 0.08);
+
+/* El avión cambia de sitio según el lienzo. */
+.sky .sky-plane {
+  right: 14%;
+  top: 16%;
 }
-.cloud::before,
-.cloud::after {
-  content: "";
-  position: absolute;
-  background: inherit;
-  border-radius: 50%;
-}
-.cloud.one {
-  width: 280px;
-  height: 65px;
-  right: -30px;
-  top: 118px;
-}
-.cloud.one::before {
-  width: 120px;
-  height: 120px;
-  left: 38px;
-  bottom: 10px;
-}
-.cloud.one::after {
-  width: 95px;
-  height: 95px;
-  left: 135px;
-  bottom: 8px;
-}
-.cloud.two {
-  width: 210px;
-  height: 52px;
-  left: -80px;
-  top: 245px;
-  opacity: 0.65;
-}
-.cloud.two::before {
-  width: 95px;
-  height: 95px;
-  left: 32px;
-  bottom: 6px;
-}
-.cloud.two::after {
-  width: 75px;
-  height: 75px;
-  left: 105px;
-  bottom: 5px;
+.search-loader .sky-plane {
+  right: 20%;
+  top: 30%;
 }
 
 @media (max-width: 640px) {
   .hero {
     padding-top: 34px;
   }
-  .plane {
-    right: -20px;
-    top: 20px;
-    font-size: 60px;
-    opacity: 0.65;
+  /* En móvil las nubes cercanas pesan demasiado: se quedan medianas. */
+  .sky-cloud--near {
+    --s: 0.9;
   }
 }

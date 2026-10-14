@@ -4,6 +4,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/layout/site-header";
 import { ToastProvider } from "@/components/ui/toast";
+import { SkyBackground } from "@/components/layout/sky-background";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -28,6 +29,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
+        {/* Cielo animado a pantalla completa: mismos elementos que la maqueta. */}
+        <div className="sky">
+          <SkyBackground />
+        </div>
         <ToastProvider>
           <SiteHeader />
           {children}

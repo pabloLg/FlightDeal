@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useEffect, useActionState, useRef, useState } from "react";
+import { Search } from "lucide-react";
 
 import { createSearch, type SearchFormState } from "@/app/actions/search";
+import { useSearchRun } from "@/lib/search-run";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +16,19 @@ export function SearchForm() {
   const [state, formAction, pending] = useActionState(createSearch, emptyState);
   const [roundTrip, setRoundTrip] = useState(false);
   const [flexible, setFlexible] = useState(false);
+  const { run, runningId } = useSearchRun();
+  const startedRef = useRef<string | null>(null);
+
+  // La acción crea la búsqueda y devuelve su id: en cuanto está, se ejecuta
+  // una sola vez por búsqueda creada (el ref evita repetirla al re-renderizar).
+  useEffect(() => {
+    const searchId = state.searchId;
+    if (!searchId || startedRef.current === searchId) return;
+    startedRef.current = searchId;
+    void run(searchId);
+  }, [state.searchId, run]);
+
+  const busy = pending || runningId !== null;
 
   return (
     <Card className="ring-brand/15 shadow-card">
@@ -102,8 +117,13 @@ export function SearchForm() {
             ) : null}
           </div>
           <div className="flex flex-col justify-end sm:col-span-2 lg:col-span-4">
-            <Button type="submit" className="h-9" disabled={pending}>
-              {pending ? "Creando…" : "Crear búsqueda"}
+            <Button type="submit" className="h-9" disabled={busy}>
+              <Search className="size-4" aria-hidden />
+              {pending
+                ? "Creando…"
+                : runningId
+                  ? "Buscando vuelos…"
+                  : "Buscar vuelos"}
             </Button>
           </div>
           {state?.error && (

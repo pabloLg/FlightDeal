@@ -3,17 +3,39 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "cn";
+import { Bell, Home, Search, Settings, TrendingUp } from "lucide-react";
 
 // Same five destinations, now with trends on its own page and alerts reachable
 // as a dashboard section.
 const LINKS = [
-  { href: "/dashboard", label: "Descubrir", match: (p: string) => p === "/dashboard" },
-  { href: "/dashboard#searches", label: "Mis búsquedas", match: () => false },
-  { href: "/dashboard#alerts", label: "Alertas", match: () => false },
-  { href: "/trends", label: "Tendencias", match: (p: string) => p.startsWith("/trends") },
+  {
+    href: "/dashboard",
+    label: "Descubrir",
+    icon: <Home className="size-4" aria-hidden />,
+    match: (p: string) => p === "/dashboard",
+  },
+  {
+    href: "/dashboard#searches",
+    label: "Mis búsquedas",
+    icon: <Search className="size-4" aria-hidden />,
+    match: () => false,
+  },
+  {
+    href: "/dashboard#alerts",
+    label: "Alertas",
+    icon: <Bell className="size-4" aria-hidden />,
+    match: () => false,
+  },
+  {
+    href: "/trends",
+    label: "Tendencias",
+    icon: <TrendingUp className="size-4" aria-hidden />,
+    match: (p: string) => p.startsWith("/trends"),
+  },
   {
     href: "/settings",
     label: "Configuración",
+    icon: <Settings className="size-4" aria-hidden />,
     match: (p: string) => p.startsWith("/settings"),
   },
 ];
@@ -38,7 +60,10 @@ export function HeaderNav() {
               active && "bg-white/80 font-semibold text-brand-dark",
             )}
           >
-            {link.label}
+            <span className="flex items-center gap-1.5">
+              {link.icon}
+              {link.label}
+            </span>
           </Link>
         );
       })}

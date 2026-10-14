@@ -7,7 +7,7 @@ import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { runExecution, type SearchRow } from "@/src/domain/search/execute-search";
 
-export type SearchFormState = { error?: string };
+export type SearchFormState = { error?: string; searchId?: string };
 
 async function requireUser() {
   const supabase = await createClient();
@@ -61,15 +61,16 @@ export async function createSearch(
     return { error: "Origen y destino son obligatorios" };
   }
 
-  const { error } = await supabase.from("searches").insert({
-    ...values,
-    profile_id: userId,
-  });
+  const { data, error } = await supabase
+    .from("searches")
+    .insert({ ...values, profile_id: userId })
+    .select("id")
+    .single();
 
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard");
-  return {};
+  return { searchId: data.id };
 }
 
 export async function updateSearch(

@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import { SearchRunProvider } from "@/lib/search-run";
 import { cityMapFor } from "@/src/domain/sources/airports";
 import { isoDaysAgo, outboundDepartDate } from "@/src/domain/deals/date-window";
 import {
@@ -358,7 +359,8 @@ export default async function DashboardPage() {
     .at(-1) ?? null;
 
   return (
-    <main className="mx-auto flex w-full max-w-[1420px] flex-col gap-8 px-6 pb-16">
+    <SearchRunProvider>
+      <main className="mx-auto flex w-full max-w-[1420px] flex-col gap-8 px-6 pb-16">
       <SearchHero
         summary={{
           searches: searchIds.length,
@@ -443,6 +445,7 @@ export default async function DashboardPage() {
           <RecentAlertsCard alerts={recentAlerts} />
         </div>
       </div>
-    </main>
+      </main>
+    </SearchRunProvider>
   );
 }

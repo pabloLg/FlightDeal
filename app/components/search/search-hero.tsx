@@ -26,12 +26,6 @@ export function SearchHero({ summary }: { summary?: VigilanceSummary }) {
   return (
     <section className="relative overflow-hidden pb-2 pt-8">
       <div className="relative mb-5 max-w-2xl">
-        <div aria-hidden className="pointer-events-none">
-          <div className="plane">✈</div>
-          <div className="cloud one" />
-          <div className="cloud two" />
-        </div>
-
         <div className="relative z-2">
           <span className="text-xs font-bold uppercase tracking-[0.18em] text-brand">
             Tu radar de viajes
