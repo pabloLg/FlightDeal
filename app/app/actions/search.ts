@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { ensureProfile } from "@/lib/profiles";
 import { runExecution, type SearchRow } from "@/src/domain/search/execute-search";
 
 export type SearchFormState = { error?: string; searchId?: string };
@@ -15,6 +16,9 @@ async function requireUser() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  // El perfil lo crea el trigger de signup, pero ha faltado en la hospedada:
+  // sin esta fila toda escritura que la referencia falla.
+  await ensureProfile(supabase, user);
   return supabase;
 }
 
@@ -24,6 +28,7 @@ async function requireUserId() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+  await ensureProfile(supabase, user);
   return { supabase, userId: user.id };
 }
 

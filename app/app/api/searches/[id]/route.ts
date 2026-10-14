@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { ensureProfile } from "@/lib/profiles";
 import { runExecution, type SearchRow } from "@/src/domain/search/execute-search";
 
 export const runtime = "nodejs";
@@ -18,6 +19,10 @@ export async function POST(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  // Sin fila en profiles la ejecución no tiene moneda: se recupera aquí en vez
+  // de devolver profile_not_found a un usuario que acaba de registrarse.
+  await ensureProfile(supabase, user);
 
   const { data: search, error: searchError } = await supabase
     .from("searches")
