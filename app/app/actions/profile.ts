@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { ensureProfile } from "@/lib/profiles";
 
 export type ProfileState = { error?: string };
 
@@ -15,6 +16,9 @@ export async function updateProfileCurrency(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no válida" };
+
+  // Un usuario sin fila de perfil vería este update como un no-op silencioso.
+  await ensureProfile(supabase, user);
 
   const currency = String(formData.get("currency") ?? "")
     .trim()
