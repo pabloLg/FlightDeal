@@ -6,12 +6,6 @@ export default function Home() {
   return (
     <main className="mx-auto w-full max-w-[1420px] px-6">
       <section className="hero">
-        <div aria-hidden className="pointer-events-none">
-          <div className="plane">✈</div>
-          <div className="cloud one" />
-          <div className="cloud two" />
-        </div>
-
         <div className="hero-copy">
           <span className="text-xs font-bold uppercase tracking-[0.18em] text-brand">
             Tu radar de viajes

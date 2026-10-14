@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+
+import { useSearchRun } from "@/lib/search-run";
 
 import {
   deleteSearch,
@@ -88,44 +90,8 @@ export function SearchesView({
   currency: string;
 }) {
   const router = useRouter();
-  const [runningId, setRunningId] = useState<string | null>(null);
-  const [pollStatus, setPollStatus] = useState<Record<string, string>>({});
-  const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  const runSearch = useCallback(
-    async (searchId: string) => {
-      setRunningId(searchId);
-      setError(null);
-      try {
-        const res = await fetch(`/api/searches/${searchId}`, { method: "POST" });
-        if (!res.ok) {
-          const body = await res.json().catch(() => null);
-          setError(body?.error ?? "No se pudo iniciar la búsqueda");
-          setRunningId(null);
-          return;
-        }
-        const { executionId } = await res.json();
-
-        for (let i = 0; i < 60; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 600));
-          const status = await fetch(`/api/searches/${searchId}`);
-          if (!status.ok) continue;
-          const { execution } = await status.json();
-          setPollStatus((prev) => ({
-            ...prev,
-            [searchId]: execution.status,
-          }));
-          if (execution.id !== executionId) break;
-          if (["completed", "degraded", "failed"].includes(execution.status)) break;
-        }
-      } finally {
-        setRunningId(null);
-        router.refresh();
-      }
-    },
-    [router],
-  );
+  const { run, runningId, error } = useSearchRun();
 
   const onDelete = async (id: string) => {
     await deleteSearch(id);
@@ -148,18 +114,11 @@ export function SearchesView({
           {error}
         </p>
       )}
-      {runningId !== null && (
-        <p className="rounded-lg bg-sky px-3 py-2 text-sm text-brand-dark">
-          Buscando precios en todas las fuentes. La primera ejecución en frío
-          puede tardar hasta unos 30 s; los precios que ves siguen siendo los
-          últimos observados.
-        </p>
-      )}
       <div className="grid gap-4">
         {searches.map((search) => {
           const liveStatus =
             runningId === search.id
-              ? (pollStatus[search.id] ?? "running")
+              ? "running"
               : (search.lastExecution?.status ?? null);
           const threshold = search.alert_threshold_eur;
           const reached =
@@ -282,7 +241,9 @@ export function SearchesView({
                   <Button
                     size="sm"
                     disabled={anyRunning || !search.enabled}
-                    onClick={() => runSearch(search.id)}
+                    onClick={() =>
+                      run(search.id, `${search.origin} → ${search.destination}`)
+                    }
                   >
                     {thisRunning ? "Ejecutando…" : "Ejecutar"}
                   </Button>
